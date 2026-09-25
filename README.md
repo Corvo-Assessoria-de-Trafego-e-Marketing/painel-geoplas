@@ -1,17 +1,17 @@
-# Painel Geoplas · Meta Ads
+# Painel Geoplas · Meta + Google Ads
 
 Dashboard estático de performance com **filtro de data livre**, que se atualiza sozinho de hora em hora.
 
 ```
-index.html   →  lê  →  data.json        (GitHub Pages serve os dois)
-                        ▲
+index.html   →  lê  →  data.json  +  data-google.json   (GitHub Pages serve tudo)
+                        ▲                 ▲
                         │ commit automático a cada hora
               .github/workflows/update-data.yml
-                        │
-              scripts/fetch-meta.mjs  →  Meta Marketing API
+                        │                 │
+   scripts/fetch-meta.mjs → Meta API      scripts/fetch-google.mjs → Google Ads API
 ```
 
-O HTML é 100% estático — nenhum servidor, nenhuma chave exposta no navegador. Quem chama a Meta é o **GitHub Actions**, usando um token guardado como *secret*.
+O HTML é 100% estático — nenhum servidor, nenhuma chave exposta no navegador. Quem chama a Meta e o Google é o **GitHub Actions**, usando credenciais guardadas como *secrets*.
 
 ---
 
@@ -52,7 +52,48 @@ O recorte é feito no navegador a partir das linhas diárias por anúncio guarda
 
 ---
 
-## Passo a passo para ligar a atualização automática (~10 min)
+## Google Ads (aba "Google Ads")
+
+| Campanha | Tipo | O que o painel mostra |
+|---|---|---|
+| **G1** · `00 - [PRINCIPAIS PRODUTOS] [ACRILICO E ACM]` | Pesquisa | conversões e custo por conversão · anúncios · **palavras-chave** · **termos de pesquisa** |
+| **G2** · `[C2] - [PMAX] - [GEO]` | Performance Max | conversões e custo por conversão · **grupos de recursos** · termos de pesquisa do PMax |
+
+- **Filtro de campanha** no topo da aba (Todas · G1 · G2) recorta a página inteira. Clicar numa **palavra-chave** filtra os termos de pesquisa que ela acionou — o filtro vira um chip removível (mesmo padrão do painel Exponential).
+- **O que está contando como conversão:** quebra das conversões por ação (WhatsApp, ligação, formulário…), para ninguém confundir "conversão" com venda.
+- **Termos que gastam sem converter** (R$20+ no período, zero conversão) ganham selo — é a lista de candidatos a negativar.
+- **PMax não tem anúncios nem palavras-chave fixas.** Por isso aparece por grupo de recursos. Os termos do PMax vêm de `campaign_search_term_view`; se a API não entregar esse relatório por dia, o script guarda o total do período e o painel avisa que esses termos não seguem o filtro de data.
+- A **Visão geral** soma o investimento Meta + Google no destaque e lista G1/G2 em *Resultado por campanha* (clique leva para a aba Google). Alcance, CTR, CPC e o gráfico da visão geral seguem sendo só do Meta — o rótulo avisa.
+- Se `data-google.json` não existir, o painel volta a ser só Meta, sem erro.
+- Trocar/adicionar campanha: bloco `PLAN` no topo de `scripts/fetch-google.mjs` (casa pelo **nome** da campanha; o log da execução mostra o ID de cada uma — preencha `id` se o nome for mudar).
+
+### Ligar o Google Ads (~10 min)
+
+**Nunca cole credenciais no chat nem em arquivo do repositório.** Tudo vai em *Settings → Secrets and variables → Actions*.
+
+**Secrets** (aba *Secrets*):
+
+| Nome | O que é |
+|---|---|
+| `GOOGLE_DEVELOPER_TOKEN` | token de desenvolvedor da MCC (Google Ads → Ferramentas → Central da API) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | cliente OAuth do Google Cloud (tipo *Desktop*) |
+| `GOOGLE_REFRESH_TOKEN` | refresh token de um usuário com acesso à conta `224-153-2672` |
+
+**Variables** (aba *Variables*, opcionais — não são segredo):
+
+| Nome | Padrão | Quando mudar |
+|---|---|---|
+| `GOOGLE_CUSTOMER_ID` | `2241532672` | só se trocar de conta |
+| `GOOGLE_LOGIN_CUSTOMER_ID` | `9147312925` (MCC Corvo) | se a conta da Geoplas estiver em outra MCC |
+| `GOOGLE_SINCE` | `2026-01-01` | início do histórico puxado |
+
+Depois: **Actions → Atualizar dados Geoplas (Meta + Google) → Run workflow** e confira o log do passo *Puxar Google Ads*. Ele lista G1/G2 com investimento e conversões; se algum nome do `PLAN` não bater, lista todas as campanhas da conta com ID para corrigir.
+
+O passo do Google roda com `continue-on-error`: se ele falhar, o Meta continua sendo publicado normalmente e o passo aparece com ✕ no Actions.
+
+---
+
+## Passo a passo para ligar a atualização automática — Meta (~10 min)
 
 ### 1) Gerar o token da Meta (System User — não expira)
 

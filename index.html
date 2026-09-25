@@ -308,6 +308,24 @@
 
   .gcard.worst{border-color:var(--crit)}
   .gthumb .ph{font-size:26px;letter-spacing:-.02em}
+
+  /* ===== Google Ads ===== */
+  .gfilter{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .gfilter .flab{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:650}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:0;background:var(--ink);color:var(--surface);font-family:inherit;font-size:11.5px;font-weight:600;padding:6px 11px;border-radius:999px;cursor:pointer}
+  .chip span{opacity:.65;font-weight:500}
+  .chip:hover{opacity:.85}
+  .cmprow.click{cursor:pointer;border-radius:10px;padding-left:8px;padding-right:8px;margin:0 -8px}
+  .cmprow.click:hover{background:var(--surface-2)}
+  .cmpsep{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:650;padding:14px 0 2px}
+  tbody tr.click{cursor:pointer}
+  tbody tr.sel td{background:var(--accent-wash)}
+  .sub2{display:block;font-size:10.5px;color:var(--muted);font-family:var(--font-ui);margin-top:2px;font-weight:400}
+  .acts .bar-row{grid-template-columns:minmax(150px,280px) 1fr auto}
+  .more{display:block;width:100%;border:0;border-top:1px solid var(--border);background:var(--surface-2);color:var(--accent-ink);font-family:inherit;font-size:12px;font-weight:600;padding:11px;cursor:pointer}
+  .more:hover{background:var(--accent-wash)}
+  .tnote{font-size:11.5px;color:var(--warn);padding:0 20px 12px}
 </style>
 </head>
 <body>
@@ -319,6 +337,7 @@
     </div>
     <div class="top-right">
       <div class="mi">Conta Meta Ads<b class="tnum" id="acc">—</b></div>
+      <div class="mi" id="gaccWrap" hidden>Conta Google Ads<b class="tnum" id="gacc">—</b></div>
       <div class="mi">Atualizado<b id="upd">—</b></div>
       <span class="live"><span class="dot"></span> auto-atualiza 1h</span>
       <button class="tbtn" id="themeBtn" type="button">◐ Tema</button>
@@ -383,6 +402,13 @@ const GLOSS = {
   linkclick:"Cliques no link: cliques que levaram ao destino do anúncio (perfil, site ou WhatsApp).",
   custounit:"Custo unitário: investimento dividido pelo resultado principal da campanha no período filtrado.",
   verba:"Verba baixa: o criativo recebeu menos de R$20 no período. Pouco dado ainda não é sinal, então ele fica fora da comparação melhor/pior.",
+  gconv:"Conversões: ações que a conta do Google Ads marca como conversão principal (ex.: clique no WhatsApp, ligação, formulário). O quadro 'O que está contando como conversão' mostra quais são. Podem vir fracionadas porque o Google divide o crédito entre os cliques que levaram à conversão.",
+  gcpa:"Custo por conversão: investimento dividido pelo número de conversões no período.",
+  gtx:"Taxa de conversão: de cada 100 cliques, quantos viraram conversão.",
+  match:"Tipo de correspondência: exata (só buscas iguais ou muito próximas), frase (buscas que contêm a ideia da frase) ou ampla (buscas relacionadas — mais alcance, menos controle).",
+  termo:"Termo de pesquisa: o que a pessoa realmente digitou no Google antes de ver o anúncio. É diferente da palavra-chave, que é o que nós configuramos na campanha.",
+  assetgroup:"Grupo de recursos: no Performance Max não existem anúncios fixos. Cada grupo reúne textos, imagens e vídeos que o Google combina sozinho para cada pessoa.",
+  semconv:"Gasta sem converter: termo que já consumiu R$20 ou mais no período sem nenhuma conversão — candidato a palavra-chave negativa.",
 };
 const hlp = k => GLOSS[k] ? ` <span class="help" title="${GLOSS[k]}" role="img" aria-label="ajuda">?</span>` : "";
 
@@ -404,7 +430,8 @@ function reachFor(scopeId){
   if (typeof v === "number") return { v, why:null };
   return { v:null, why: (!scopeId && w.acc_note) ? w.acc_note : "não disponível nesta janela" };
 }
-const state = { tab: "geral", preset: "last_30d", from: null, to: null, trend: "s", adView: "table" };
+const state = { tab: "geral", preset: "last_30d", from: null, to: null, trend: "s", adView: "table",
+  gcamp: "all", gkw: null, gAllTerms: false };
 
 /* ─────────── agregação ─────────── */
 const KEYS  = ["s","i","rc","ck","res","fol","lc","tp","p50","p75","p100","pl"];
@@ -467,6 +494,8 @@ function renderSeg(A){
   const totalAds = new Set(A.rows.map(r => r.a)).size;
   const tabs = [["geral","Visão geral",totalAds]].concat(
     DATA.campaigns.map(c => [c.id, c.tag + " · " + c.label.split(" · ")[1], counts[c.id]]));
+  if (GDATA) tabs.push(["google", "Google Ads",
+    new Set(GDATA.daily.filter(r => r.d >= state.from && r.d <= state.to).map(r => r.c)).size]);
   const el = document.getElementById("seg");
   el.innerHTML = tabs.map(([k,l,n]) =>
     `<button role="tab" aria-selected="${state.tab===k}" data-k="${k}">${esc(l)}<span class="cnt">${n}</span></button>`).join("");
@@ -514,10 +543,22 @@ function heroHTML(A){
         : frases[0];
       nt = `No período, ${lista}. Abra cada aba para o funil e o ranking de criativos.`;
     }
+    /* Google entra no consolidado: investimento somado + uma frase de resultado */
+    const G = GDATA ? gTotals() : null, gs = G ? G.total.s : 0;
+    if (gs > 0){
+      const gl = GDATA.campaigns.filter(c => G.byCamp[c.id] && G.byCamp[c.id].s > 0).map(c => {
+        const a = G.byCamp[c.id];
+        return `a <b>${esc(c.tag)}</b> gerou <b>${CV(a.cv)}</b> ${a.cv===1?"conversão":"conversões"} a ${uCost(a.s, a.cv)} cada`;
+      });
+      const glista = gl.length > 1 ? gl.slice(0, -1).join(", ") + " e " + gl[gl.length - 1] : gl[0];
+      nt += ` No Google Ads, ${glista}.`;
+    }
+    const eyeC = `${DATA.campaigns.length} campanhas Meta` + (GDATA ? ` + ${GDATA.campaigns.length} Google` : "");
     return `<div class="obj"><div>
-      <div class="eye">Visão consolidada · ${DATA.campaigns.length} campanhas · ${nd} ${nd===1?"dia":"dias"} com veiculação</div>
+      <div class="eye">Visão consolidada · ${eyeC} · ${nd} ${nd===1?"dia":"dias"} com veiculação</div>
       <div class="ttl">${ttl}</div><div class="nt">${nt}</div></div>
-      <div class="big"><div class="v tnum">${BRL0(t.s)}</div><div class="l">investidos no período</div></div></div>`;
+      <div class="big"><div class="v tnum">${BRL0(t.s + gs)}</div><div class="l">${gs > 0
+        ? `investidos · Meta ${BRL0(t.s)} + Google ${BRL0(gs)}` : "investidos no período"}</div></div></div>`;
   }
   const c = DATA.campaigns.find(x => x.id === state.tab);
   const v = t[c.kpi] || 0, cst = cost(t.s, v);
@@ -559,14 +600,19 @@ function kpisHTML(A){
           return { k:c.kpi2_label, v:NUM(v), s:uCost(a.s, v) + " cada · " + esc(c.tag), hk:HK[c.kpi2] };
         })
       : [];
+    /* com Google carregado, os indicadores de leilão abaixo são só do Meta — o rótulo avisa */
+    const G = GDATA ? gTotals() : null, gt = G && G.total.s > 0 ? G.total : null;
+    const sfx = GDATA ? " · Meta" : "";
     cards = [
-      { k:"Investimento", v:BRL0(t.s), s:`${A.series.length} dias · ${BRL(t.s/Math.max(A.series.length,1))}/dia` },
+      { k:"Investimento" + (GDATA ? " Meta" : ""), v:BRL0(t.s), s:`${A.series.length} dias · ${BRL(t.s/Math.max(A.series.length,1))}/dia` },
       ...porCampanha, ...extras,
+      ...(gt ? [{ k:"Conversões Google", v:CV(gt.cv), s:uCost(gt.s, gt.cv) + " cada · " + BRL0(gt.s) + " investidos", hk:"gconv" }] : []),
       { k:"Alcance", v:A.reach===null?"—":NUM(A.reach),
-        s:A.reach===null?A.reachWhy:"pessoas únicas · "+NUM(t.i)+" impr.", hk:"alcance" },
-      { k:"CTR",     v:PCT(t.ctr), s:NUM(t.ck) + " cliques", hk:"ctr" },
-      { k:"CPC",     v:t.cpc===null?"—":BRL(t.cpc), s:"por clique", hk:"cpc" },
-      { k:"CPM",     v:BRL(t.cpm), s:"por mil impr.", hk:"cpm" },
+        s:A.reach===null?A.reachWhy:"pessoas únicas · "+NUM(t.i)+" impr." + sfx, hk:"alcance" },
+      { k:"CTR",     v:PCT(t.ctr), s:NUM(t.ck) + " cliques" + sfx, hk:"ctr" },
+      { k:"CPC",     v:t.cpc===null?"—":BRL(t.cpc), s:"por clique" + sfx, hk:"cpc" },
+      /* com o card do Google a grade passaria de 8; o CPM segue nas abas de campanha */
+      ...(gt ? [] : [{ k:"CPM", v:BRL(t.cpm), s:"por mil impr." + sfx, hk:"cpm" }]),
     ];
   } else {
     const c = DATA.campaigns.find(x => x.id === state.tab);
@@ -626,8 +672,20 @@ function funnelHTML(A){
       return { c, a, v };
     });
     const live = rows.filter(r => typeof r === "object" && r.c);
-    const maxS = Math.max(...live.map(r => r.a.s), 1);
-    const body = rows.map(r => {
+    const G = GDATA ? gTotals() : null;
+    const maxS = Math.max(...live.map(r => r.a.s), ...(G ? Object.values(G.byCamp).map(a => a.s) : []), 1);
+    const gBody = G ? `<div class="cmpsep">Google Ads · clique para abrir</div>` + GDATA.campaigns.map(c => {
+      const a = G.byCamp[c.id];
+      if (!a || !a.s) return `<div class="cmprow click" data-gc="${esc(c.id)}"><div class="cl">${esc(c.tag)}<small>${esc(GTYPE[c.type]||c.type)}</small></div>
+        <div class="bar-track"><div class="bar-fill" style="width:1.5%"></div></div>
+        <div class="cr"><div class="cv">—</div><div class="cs">sem veiculação</div></div></div>`;
+      return `<div class="cmprow click" data-gc="${esc(c.id)}">
+        <div class="cl">${esc(c.tag)}<small>${esc(GTYPE[c.type]||c.type)} · ${esc(c.label.split(" · ")[1] || c.label)}</small></div>
+        <div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(a.s/maxS*100,1.5).toFixed(1)}%"></div></div>
+          <div class="cs" style="margin-top:4px">${BRL0(a.s)} investidos · ${NUM(a.ck)} cliques</div></div>
+        <div class="cr"><div class="cv">${CV(a.cv)}</div><div class="cs">${a.cv===1?"conversão":"conversões"} · ${uCost(a.s, a.cv)} cada</div></div></div>`;
+    }).join("") : "";
+    const body = (G ? `<div class="cmpsep" style="padding-top:0">Meta Ads</div>` : "") + rows.map(r => {
       if (typeof r === "string") return r;
       return `<div class="cmprow">
         <div class="cl">${esc(r.c.tag)}<small>${esc(r.c.label.split(" · ")[1] || r.c.label)}</small></div>
@@ -637,7 +695,7 @@ function funnelHTML(A){
       </div>`;
     }).join("");
     return `<div class="panel"><div class="phead"><div><h3>Resultado por campanha</h3>
-      <div class="psub">cada campanha no seu próprio objetivo — as barras comparam investimento</div></div></div>${body}</div>`;
+      <div class="psub">cada campanha no seu próprio objetivo — as barras comparam investimento</div></div></div>${body}${gBody}</div>`;
   }
   const c = DATA.campaigns.find(x => x.id === state.tab);
   const st = stagesFor(c, A.total);
@@ -667,7 +725,11 @@ function trendMetrics(){
     ck:{ l:"Cliques", fmt:NUM, f:d=>d.ck },
   };
   if (state.tab === "geral") base.ctr = { l:"CTR", fmt:PCT, f:d=>d.i?d.ck/d.i*100:0 };
-  else {
+  else if (state.tab === "google"){
+    base.kpi = { l:"Conversões", fmt:CV, f:d=>d.kpi };
+    base.cpa = { l:"Custo/conv.", fmt:BRL0, f:d=>d.kpi>0?d.s/d.kpi:0 };
+    base.ctr = { l:"CTR", fmt:PCT, f:d=>d.i?d.ck/d.i*100:0 };
+  } else {
     const c = DATA.campaigns.find(x => x.id === state.tab);
     base.kpi = { l:c.kpi_label, fmt:NUM, f:d=>d.kpi };
   }
@@ -710,7 +772,7 @@ function paintTrend(A){
     <circle id="cd" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>
     <rect x="${ml}" y="${mt}" width="${pw}" height="${ph}" fill="transparent" id="hit"/></svg>
     <div class="psub" style="margin-top:8px"><span style="color:var(--accent)">━</span> diário &nbsp; <span style="color:var(--accent-ink)">┄</span> média ${w} ${w===1?"dia":"dias"}</div>`;
-  document.getElementById("trendSub").textContent = `${M.l} · ${daily.length} ${daily.length===1?"dia":"dias"}`;
+  document.getElementById("trendSub").textContent = `${M.l}${state.tab==="geral"&&GDATA?" · só Meta Ads":""} · ${daily.length} ${daily.length===1?"dia":"dias"}`;
   const svg=document.getElementById("tsvg"), hit=document.getElementById("hit"),
         cx=document.getElementById("cx"), cd=document.getElementById("cd"), tt=document.getElementById("tt");
   function mv(e){
@@ -849,6 +911,292 @@ function notesHTML(){
   </div>`;
 }
 
+/* ═════════════ GOOGLE ADS ═════════════
+   Lê data-google.json (gerado por scripts/fetch-google.mjs). Mesma lógica do
+   Meta: linhas diárias guardadas, recorte feito aqui no navegador. Filtro no
+   estilo do painel Exponential: abas de campanha no topo + clique em
+   palavra-chave vira filtro removível (chip) dos termos de pesquisa.        */
+let GDATA = null;
+const GTYPE = { SEARCH:"Pesquisa", PERFORMANCE_MAX:"Performance Max" };
+const MATCH = { EXACT:"exata", PHRASE:"frase", BROAD:"ampla" };
+const GKEYS = ["s","i","ck","cv","vl"];
+/* conversão pode vir fracionada (o Google divide o crédito) */
+const CV = n => (n || 0).toLocaleString("pt-BR", { maximumFractionDigits: (n || 0) % 1 ? 1 : 0 });
+const gBlank  = () => { const o = {}; GKEYS.forEach(k => o[k] = 0); return o; };
+const gAdd    = (a, r) => { GKEYS.forEach(k => a[k] += (r[k] || 0)); return a; };
+const gDerive = a => {
+  a.ctr = a.i > 0 ? a.ck / a.i * 100 : 0;
+  a.cpc = a.ck > 0 ? a.s / a.ck : null;
+  a.cpm = a.i > 0 ? a.s / a.i * 1000 : 0;
+  a.cpa = cost(a.s, a.cv);
+  a.tx  = a.ck > 0 ? a.cv / a.ck * 100 : 0;
+  return a;
+};
+const inRange = r => r.d >= state.from && r.d <= state.to;
+const gStatus = s => s === "ENABLED" ? `<span class="st on">ativo</span>` : `<span class="st off">${s === "PAUSED" ? "pausado" : esc((s || "—").toLowerCase())}</span>`;
+
+/* totais por campanha no período atual (usado também na Visão geral) */
+function gTotals(){
+  const byCamp = {};
+  for (const r of GDATA.daily) if (inRange(r)) gAdd(byCamp[r.c] ||= gBlank(), r);
+  Object.values(byCamp).forEach(gDerive);
+  const total = gDerive(Object.values(byCamp).reduce(gAdd, gBlank()));
+  return { byCamp, total };
+}
+const gScopeCamps = () => state.gcamp === "all" ? GDATA.campaigns : GDATA.campaigns.filter(c => c.id === state.gcamp);
+
+function gSlice(){
+  const ids = new Set(gScopeCamps().map(c => c.id)), inS = r => ids.has(r.c);
+  const { byCamp } = gTotals();
+  const scoped = GDATA.daily.filter(r => inRange(r) && inS(r));
+  const total = gDerive(scoped.reduce(gAdd, gBlank()));
+  const dm = {};
+  for (const r of scoped){
+    const d = dm[r.d] ||= { d:r.d, s:0, i:0, ck:0, kpi:0 };
+    d.s += r.s || 0; d.i += r.i || 0; d.ck += r.ck || 0; d.kpi += r.cv || 0;
+  }
+  const series = Object.values(dm).sort((x, y) => x.d < y.d ? -1 : 1);
+  const group = (list, key) => {
+    const o = {};
+    for (const r of list || []) if (inS(r) && inRange(r)) gAdd(o[r[key]] ||= gBlank(), r);
+    Object.values(o).forEach(gDerive);
+    return o;
+  };
+  const acts = {};
+  for (const r of GDATA.conv_actions || []) if (inS(r) && inRange(r)) acts[r.n] = (acts[r.n] || 0) + r.cv;
+  /* termos: soma por campanha + termo + palavra-chave. Termo sem data (PMax,
+     quando a API não quebra por dia) é o total do histórico e ignora o filtro de data. */
+  const terms = {};
+  for (const r of GDATA.search_terms || []){
+    if (!inS(r) || (r.d && !inRange(r))) continue;
+    if (state.gkw && r.kw !== state.gkw) continue;
+    const k = r.c + "|" + r.t + "|" + (r.kw || "");
+    const a = terms[k] ||= Object.assign(gBlank(), { t:r.t, c:r.c, kw:r.kw || null, st:null, undated:!r.d });
+    gAdd(a, r); if (r.st) a.st = r.st;
+  }
+  Object.values(terms).forEach(gDerive);
+  return { scoped, total, byCamp, series, acts,
+    byAd: group(GDATA.ad_daily, "a"), byKw: group(GDATA.kw_daily, "k"), byAg: group(GDATA.ag_daily, "g"),
+    terms: Object.values(terms).sort((p, q) => q.s - p.s || q.ck - p.ck) };
+}
+
+/* ranking igual ao dos criativos Meta: custo por conversão, R$20 mínimo p/ entrar na comparação */
+function gRank(list){
+  list.sort((p, q) => p.a.cpa === null && q.a.cpa === null ? q.a.s - p.a.s
+    : p.a.cpa === null ? 1 : q.a.cpa === null ? -1 : p.a.cpa - q.a.cpa);
+  const scored = list.filter(x => x.a.cpa !== null && x.a.s >= MINSPEND);
+  const best = scored[0], worst = scored.length > 1 ? scored[scored.length - 1] : null;
+  list.forEach(x => { x.cst = x.a.cpa; x.low = x.a.s < MINSPEND;
+    x.best = !!best && x === best; x.worst = !!worst && x === worst; });
+  return list;
+}
+
+function gFilterHTML(){
+  const opts = [["all", "Todas as campanhas"]].concat(
+    GDATA.campaigns.map(c => [c.id, c.tag + " · " + (GTYPE[c.type] || c.type)]));
+  const chips = state.gkw
+    ? `<div class="chips"><button class="chip" data-x="gkw"><span>palavra-chave:</span>${esc(state.gkw)} ✕</button></div>` : "";
+  return `<div class="gfilter"><span class="flab">Campanha</span>
+    <div class="miniseg" id="gcampSeg">${opts.map(([k, l]) =>
+      `<button aria-selected="${state.gcamp === k}" data-k="${esc(k)}">${esc(l)}</button>`).join("")}</div>${chips}</div>`;
+}
+
+function gHeroHTML(G){
+  const t = G.total;
+  if (state.gcamp === "all"){
+    const live = GDATA.campaigns.filter(c => G.byCamp[c.id] && G.byCamp[c.id].s > 0);
+    const fr = live.map(c => { const a = G.byCamp[c.id];
+      return `a <b>${esc(c.tag)}</b> (${esc(GTYPE[c.type] || c.type)}) gerou <b>${CV(a.cv)}</b> ${a.cv === 1 ? "conversão" : "conversões"} a ${uCost(a.s, a.cv)} cada`; });
+    const lista = fr.length > 1 ? fr.slice(0, -1).join(", ") + " e " + fr[fr.length - 1] : (fr[0] || "");
+    const ttl = !t.s ? "Sem veiculação no período selecionado"
+      : live.length > 1 ? "Pesquisa e Performance Max rodando juntas" : "Uma campanha ativa no período";
+    return `<div class="obj"><div>
+      <div class="eye">Google Ads · ${GDATA.campaigns.length} campanhas · conta ${esc(GDATA.meta.account_label)}</div>
+      <div class="ttl">${ttl}</div>
+      <div class="nt">${t.s ? `No período, ${lista}. Clique numa campanha para filtrar a página inteira.` : "Escolha outro intervalo ou clique em Tudo."}</div></div>
+      <div class="big"><div class="v tnum">${CV(t.cv)}</div><div class="l">conversões · ${uCost(t.s, t.cv)} cada · ${BRL0(t.s)} investidos</div></div></div>`;
+  }
+  const c = GDATA.campaigns.find(x => x.id === state.gcamp);
+  const tech = `<div class="camptech">${esc(c.name)}${c.daily_budget ? " · orçamento " + BRL(c.daily_budget) + "/dia" : ""}${c.status !== "ENABLED" ? " · pausada" : ""}</div>`;
+  if (!t.s) return `<div class="obj"><div><div class="eye">${esc(c.tag)} · ${esc(GTYPE[c.type] || c.type)}</div>
+    <div class="ttl">Sem veiculação neste período</div>
+    <div class="nt">Não houve gasto nesta campanha no intervalo escolhido. Troque o período (ex.: Tudo) para ver o histórico.</div>${tech}</div>
+    <div class="big"><div class="v">—</div><div class="l">conversões</div></div></div>`;
+  const ok = t.cv > 0;
+  return `<div class="obj ${ok ? "good" : "warn"}"><div>
+    <div class="eye">${esc(c.tag)} · ${esc(GTYPE[c.type] || c.type)} ${ok ? '<span class="pill good">✓ convertendo</span>' : '<span class="pill warn">▲ sem conversão no período</span>'}</div>
+    <div class="ttl">${esc(c.label)}</div>
+    <div class="nt">${esc(c.goal)}${ok ? ` No período, cada conversão saiu por <b>${BRL(t.cpa)}</b>.` : " Nenhuma conversão registrada neste intervalo — use CTR e CPC abaixo como sinal de tração."}</div>${tech}</div>
+    <div class="big"><div class="v tnum">${CV(t.cv)}</div><div class="l">conversões · ${uCost(t.s, t.cv)} cada</div></div></div>`;
+}
+
+function gKpisHTML(G){
+  const t = G.total, nd = G.series.length;
+  const cards = [
+    { k:"Investimento", v:BRL0(t.s), s:`${nd} dias · ${BRL(t.s / Math.max(nd, 1))}/dia` },
+    { k:"Conversões", v:CV(t.cv), s:"ações principais da conta", hk:"gconv" },
+    { k:"Custo por conversão", v:t.cpa === null ? "—" : BRL(t.cpa), s:"investimento ÷ conversões", hk:"gcpa" },
+    { k:"Taxa de conversão", v:PCT(t.tx), s:"dos cliques", hk:"gtx" },
+    { k:"Cliques", v:NUM(t.ck), s:NUM(t.i) + " impressões", hk:"impressoes" },
+    { k:"CTR", v:PCT(t.ctr), s:"cliques ÷ impressões", hk:"ctr" },
+    { k:"CPC", v:t.cpc === null ? "—" : BRL(t.cpc), s:"por clique", hk:"cpc" },
+    { k:"CPM", v:BRL(t.cpm), s:"por mil impr.", hk:"cpm" },
+  ];
+  return `<div class="kpis">${cards.map(c =>
+    `<div class="kpi"><div class="k">${c.k}${c.hk ? hlp(c.hk) : ""}</div><div class="v tnum">${c.v}</div><div class="s">${c.s}</div></div>`).join("")}</div>`;
+}
+
+function gCampRowsHTML(G){
+  const maxS = Math.max(...Object.values(G.byCamp).map(a => a.s), 1);
+  const body = GDATA.campaigns.map(c => {
+    const a = G.byCamp[c.id];
+    if (!a || !a.s) return `<div class="cmprow click" data-gc="${esc(c.id)}"><div class="cl">${esc(c.tag)}<small>${esc(GTYPE[c.type] || c.type)}</small></div>
+      <div class="bar-track"><div class="bar-fill" style="width:1.5%"></div></div>
+      <div class="cr"><div class="cv">—</div><div class="cs">sem veiculação</div></div></div>`;
+    return `<div class="cmprow click" data-gc="${esc(c.id)}">
+      <div class="cl">${esc(c.tag)}<small>${esc(GTYPE[c.type] || c.type)} · ${esc(c.label.split(" · ")[1] || c.label)}</small></div>
+      <div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(a.s / maxS * 100, 1.5).toFixed(1)}%"></div></div>
+        <div class="cs" style="margin-top:4px">${BRL0(a.s)} investidos · ${NUM(a.ck)} cliques · CPC ${a.cpc === null ? "—" : BRL(a.cpc)}</div></div>
+      <div class="cr"><div class="cv">${CV(a.cv)}</div><div class="cs">${a.cv === 1 ? "conversão" : "conversões"} · ${uCost(a.s, a.cv)} cada</div></div></div>`;
+  }).join("");
+  return `<div class="panel"><div class="phead"><div><h3>Resultado por campanha</h3>
+    <div class="psub">clique numa campanha para filtrar a página — as barras comparam investimento</div></div></div>${body}</div>`;
+}
+
+function gActsHTML(G){
+  const e = Object.entries(G.acts).sort((a, b) => b[1] - a[1]);
+  if (!e.length) return "";
+  const tot = e.reduce((s, x) => s + x[1], 0), mx = e[0][1];
+  return `<div class="panel acts"><div class="phead"><div><h3>O que está contando como conversão</h3>
+    <div class="psub">cada ação de conversão da conta, no recorte atual — é isso que o Google otimiza</div></div></div>
+    ${e.map(([n, v]) => `<div class="bar-row"><div class="lbl" title="${esc(n)}">${esc(n)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(v / mx * 100, 1.5).toFixed(1)}%"></div></div>
+      <div class="val">${CV(v)} <span class="mini">${(v / tot * 100).toFixed(0)}%</span></div></div>`).join("")}</div>`;
+}
+
+function gDiagHTML(G){
+  const t = G.total;
+  return `<div class="panel" style="padding:0;overflow:hidden">
+    <div class="tblhead" style="padding:16px 20px 10px"><h3>Diagnóstico de entrega</h3>
+      <span class="sub">indicadores de leilão — não são a meta, servem para explicar o custo</span></div>
+    <div class="diag">
+      <div class="d"><div class="dk">CPM${hlp("cpm")}</div><div class="dv">${BRL(t.cpm)}</div></div>
+      <div class="d"><div class="dk">CTR${hlp("ctr")}</div><div class="dv">${PCT(t.ctr)}</div></div>
+      <div class="d"><div class="dk">CPC${hlp("cpc")}</div><div class="dv">${t.cpc === null ? "—" : BRL(t.cpc)}</div></div>
+      <div class="d"><div class="dk">Taxa de conv.${hlp("gtx")}</div><div class="dv">${PCT(t.tx)}</div></div>
+    </div></div>`;
+}
+
+/* tabela genérica com ranking por custo/conversão */
+function gTable({ title, sub, cols, list, row, clickAttr, selKey }){
+  if (!list.length) return `<div class="tblwrap"><div class="tblhead"><h3>${title}</h3></div>
+    <div class="empty">Nada veiculou neste recorte.</div></div>`;
+  const spend = list.reduce((s, x) => s + x.a.s, 0);
+  return `<div class="tblwrap"><div class="tblhead"><h3>${title}</h3><span class="sub">${sub}</span></div>
+    <div class="scroll"><table><thead><tr>${cols.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>
+    ${list.map(x => `<tr class="${x.best ? "best" : ""}${clickAttr ? " click" : ""}${selKey && selKey(x) ? " sel" : ""}"${clickAttr ? " " + clickAttr(x) : ""}>
+      ${row(x, spend)}</tr>`).join("")}</tbody></table></div></div>`;
+}
+const gMetricCells = (x, spend) => `
+  <td>${CV(x.a.cv)}</td><td>${x.a.cpa === null ? "—" : BRL(x.a.cpa)}</td>
+  <td>${BRL0(x.a.s)} <span class="mini">${spend ? (x.a.s / spend * 100).toFixed(0) : 0}%</span></td>
+  <td>${NUM(x.a.ck)}</td><td>${PCT(x.a.ctr)}</td><td>${x.a.cpc === null ? "—" : BRL(x.a.cpc)}</td>`;
+const G_MCOLS = ["Conversões", `Custo/conv.${hlp("gcpa")}`, "Investido", "Cliques", `CTR${hlp("ctr")}`, `CPC${hlp("cpc")}`];
+const gTag = id => { const c = GDATA.campaigns.find(x => x.id === id); return c ? c.tag : ""; };
+
+function gAdsHTML(G){
+  const list = gRank((GDATA.ads || []).filter(ad => G.byAd[ad.id] && G.byAd[ad.id].s > 0)
+    .map(ad => ({ ad, a: G.byAd[ad.id] })));
+  return gTable({ title:"Anúncios · Pesquisa", list,
+    sub:`${list.length} ${list.length === 1 ? "anúncio" : "anúncios"} · do mais barato ao mais caro por conversão · título = 3 primeiros headlines`,
+    cols:["Anúncio", ...G_MCOLS, "Status", "Sinal"],
+    row:(x, sp) => `<td><span class="cfull">${esc(x.ad.title)}</span><span class="sub2">${esc(gTag(x.ad.c))} · grupo ${esc(x.ad.agn)}</span></td>
+      ${gMetricCells(x, sp)}<td>${gStatus(x.ad.status)}</td><td>${sgTag(x)}</td>` });
+}
+
+function gKwHTML(G){
+  const list = gRank((GDATA.keywords || []).filter(k => G.byKw[k.id] && G.byKw[k.id].s > 0)
+    .map(k => ({ k, a: G.byKw[k.id] })));
+  return gTable({ title:"Palavras-chave", list,
+    sub:`${list.length} com gasto no período · clique numa linha para ver os termos que ela acionou`,
+    cols:["Palavra-chave", ...G_MCOLS, "Sinal"],
+    clickAttr: x => `data-kw="${esc(x.k.kw)}"`,
+    selKey: x => state.gkw === x.k.kw,
+    row:(x, sp) => `<td><span class="cfull">${esc(x.k.kw)}</span><span class="sub2">${esc(MATCH[x.k.mt] || (x.k.mt || "").toLowerCase())}${hlp("match")} · grupo ${esc(x.k.agn)}</span></td>
+      ${gMetricCells(x, sp)}<td>${sgTag(x)}</td>` });
+}
+
+function gAgHTML(G){
+  const list = gRank((GDATA.asset_groups || []).filter(g => G.byAg[g.id] && G.byAg[g.id].s > 0)
+    .map(g => ({ g, a: G.byAg[g.id] })));
+  return gTable({ title:`Grupos de recursos · Performance Max${hlp("assetgroup")}`, list,
+    sub:`${list.length} ${list.length === 1 ? "grupo" : "grupos"} · do mais barato ao mais caro por conversão`,
+    cols:["Grupo de recursos", ...G_MCOLS, "Status", "Sinal"],
+    row:(x, sp) => `<td><span class="cfull">${esc(x.g.name)}</span><span class="sub2">${esc(gTag(x.g.c))}</span></td>
+      ${gMetricCells(x, sp)}<td>${gStatus(x.g.status)}</td><td>${sgTag(x)}</td>` });
+}
+
+const TERMS_TOP = 25;
+function gTermsHTML(G){
+  const all = G.terms, list = state.gAllTerms ? all : all.slice(0, TERMS_TOP);
+  const showCamp = state.gcamp === "all" && GDATA.campaigns.length > 1;
+  const undated = all.some(x => x.undated);
+  const semConv = all.filter(x => x.s >= MINSPEND && !x.cv);
+  const sig = x => x.st === "EXCLUDED" ? `<span class="sg none">negativado</span>`
+    : x.s >= MINSPEND && !x.cv ? `<span class="sg worst">gasta sem converter${hlp("semconv")}</span>`
+    : x.st === "ADDED" ? `<span class="sg none">já é palavra-chave</span>`
+    : x.cv > 0 ? `<span class="sg best">converteu</span>` : `<span class="sg none">—</span>`;
+  const head = `<div class="tblhead"><h3>Termos de pesquisa${hlp("termo")}</h3>
+    <span class="sub">o que as pessoas realmente buscaram · ${all.length} termos · ordenados por investimento${state.gkw ? ` · só os acionados por <b>${esc(state.gkw)}</b>` : ""}</span></div>`;
+  if (!all.length) return `<div class="tblwrap">${head}<div class="empty">${state.gkw
+    ? "Nenhum termo registrado para esta palavra-chave no período." : "Nenhum termo de pesquisa neste recorte."}</div></div>`;
+  const note = [
+    undated ? `Termos do Performance Max: a API do Google entrega o total desde ${brD(GDATA.meta.since)}, sem quebra por dia — eles não mudam com o filtro de data.` : "",
+    semConv.length ? `${semConv.length} ${semConv.length === 1 ? "termo gastou" : "termos gastaram"} R$20+ sem converter (${BRL0(semConv.reduce((s, x) => s + x.s, 0))} no total) — candidatos a negativar.` : "",
+  ].filter(Boolean).map(t => `<div class="tnote">▸ ${t}</div>`).join("");
+  return `<div class="tblwrap">${head}${note}<div class="scroll"><table><thead><tr>
+    <th>Termo</th>${showCamp ? "<th>Campanha</th>" : ""}<th>Palavra-chave acionada</th><th>Impr.</th><th>Cliques</th><th>CTR</th>
+    <th>Investido</th><th>Conversões</th><th>Custo/conv.</th><th>Sinal</th></tr></thead><tbody>
+    ${list.map(x => `<tr><td><span class="cfull">${esc(x.t)}</span></td>${showCamp ? `<td>${esc(gTag(x.c))}</td>` : ""}
+      <td style="text-align:left">${x.kw ? esc(x.kw) : `<span class="mini">${x.undated ? "PMax · total" : "—"}</span>`}</td>
+      <td>${NUM(x.i)}</td><td>${NUM(x.ck)}</td><td>${PCT(x.ctr)}</td><td>${BRL(x.s)}</td>
+      <td>${CV(x.cv)}</td><td>${x.cpa === null ? "—" : BRL(x.cpa)}</td><td>${sig(x)}</td></tr>`).join("")}
+    </tbody></table></div>
+    ${all.length > TERMS_TOP ? `<button class="more" id="gMore">${state.gAllTerms ? "Mostrar só os " + TERMS_TOP + " maiores" : "Ver todos os " + all.length + " termos"}</button>` : ""}</div>`;
+}
+
+function gNotesHTML(){
+  const w = GDATA.meta.warnings || [];
+  return `<div class="notes">
+    <div class="row"><span>▸</span><div><b>Cada campanha é julgada pelo custo por conversão</b>, não pelo CTR. Anúncio, palavra-chave ou grupo com menos de R$20 no período fica fora da comparação melhor/pior.</div></div>
+    <div class="row"><span>▸</span><div><b>Performance Max não tem anúncios nem palavras-chave fixas</b> — o Google monta as peças sozinho a partir dos grupos de recursos. Por isso o PMax aparece por grupo, e os termos dele vêm num relatório à parte.</div></div>
+    <div class="row"><span>▸</span><div><b>Fonte:</b> Google Ads API ${esc(GDATA.meta.api_version || "")}, conta <b>${esc(GDATA.meta.account_label)}</b>. Dados diários desde ${brD(GDATA.meta.since)}; qualquer intervalo é recortado aqui, sem nova consulta.</div></div>
+    ${w.length ? `<div class="row"><span>▸</span><div><b>Relatórios indisponíveis na última atualização:</b> ${w.map(esc).join(" · ")}</div></div>` : ""}
+  </div>`;
+}
+
+function renderGoogle(){
+  const G = gSlice(), nd = G.series.length;
+  const camps = gScopeCamps();
+  const hasS = camps.some(c => c.type === "SEARCH"), hasP = camps.some(c => c.type === "PERFORMANCE_MAX");
+  const cs = state.gcamp === "all" ? null : camps[0];
+  document.getElementById("rangenote").innerHTML =
+    `Exibindo <b>${brD(state.from)}</b> até <b>${brD(state.to)}</b> · <b>${nd}</b> ${nd === 1 ? "dia" : "dias"} com veiculação · <b>${BRL(G.total.s)}</b> investidos ${cs ? "em <b>" + esc(cs.tag) + "</b>" : "no Google Ads"}${state.preset === null ? " · <b>intervalo personalizado</b>" : ""}`;
+  document.getElementById("app").innerHTML = gFilterHTML() + gHeroHTML(G) + (G.scoped.length
+    ? gKpisHTML(G) + (state.gcamp === "all" ? gCampRowsHTML(G) : "") + trendHTML() + gActsHTML(G) + gDiagHTML(G)
+      + (hasS ? gAdsHTML(G) + gKwHTML(G) : "") + (hasP ? gAgHTML(G) : "") + gTermsHTML(G) + gNotesHTML()
+    : `<div class="panel"><div class="empty">Nada veiculou no Google neste recorte.<br>Escolha outro período ou clique em <b>Tudo</b>.</div></div>`);
+  if (G.scoped.length) paintTrend(G);
+  document.querySelectorAll("#gcampSeg button").forEach(b => b.onclick = () => {
+    state.gcamp = b.dataset.k; state.gkw = null; state.gAllTerms = false; render(); });
+  document.querySelectorAll("#app [data-gc]").forEach(el => el.onclick = () => {
+    state.gcamp = el.dataset.gc; state.gkw = null; render(); });
+  document.querySelectorAll("#app tr[data-kw]").forEach(el => el.onclick = () => {
+    state.gkw = state.gkw === el.dataset.kw ? null : el.dataset.kw; state.gAllTerms = false; render(); });
+  const chip = document.querySelector('.chip[data-x="gkw"]'); if (chip) chip.onclick = () => { state.gkw = null; render(); };
+  const more = document.getElementById("gMore"); if (more) more.onclick = () => { state.gAllTerms = !state.gAllTerms; render(); };
+}
+
 /* ─────────── render ─────────── */
 function render(){
   const A = slice();
@@ -856,11 +1204,13 @@ function render(){
   A.reach = _r.v; A.reachWhy = _r.why;
   A.freq  = A.reach ? A.total.i / A.reach : null;
   renderSeg(A); renderPeriod();
+  if (state.tab === "google" && GDATA){ renderGoogle(); return; }
 
   const nd = A.series.length;
   const scopeC = DATA.campaigns.find(c => c.id === state.tab);
   document.getElementById("rangenote").innerHTML =
-    `Exibindo <b>${brD(state.from)}</b> até <b>${brD(state.to)}</b> · <b>${nd}</b> ${nd===1?"dia":"dias"} com veiculação · <b>${BRL(A.total.s)}</b> investidos ${scopeC?"em <b>"+esc(scopeC.tag)+"</b>":(DATA.campaigns.length===1?"na campanha":"nas "+DATA.campaigns.length+" campanhas")}${state.preset===null?" · <b>intervalo personalizado</b>":""}`;
+    `Exibindo <b>${brD(state.from)}</b> até <b>${brD(state.to)}</b> · <b>${nd}</b> ${nd===1?"dia":"dias"} com veiculação · <b>${BRL(A.total.s)}</b> investidos ${scopeC?"em <b>"+esc(scopeC.tag)+"</b>":(DATA.campaigns.length===1?"na campanha":"nas "+DATA.campaigns.length+" campanhas Meta")}${
+      !scopeC && GDATA ? " + <b>" + BRL(gTotals().total.s) + "</b> no Google Ads" : ""}${state.preset===null?" · <b>intervalo personalizado</b>":""}`;
 
   if (!A.scoped.length){
     document.getElementById("app").innerHTML = heroHTML(A) +
@@ -873,6 +1223,9 @@ function render(){
 
   paintTrend(A);
   document.querySelectorAll(".advw button").forEach(b => b.onclick = () => { state.adView = b.dataset.v; render(); });
+  /* linhas G1/G2 da visão geral levam direto para a aba Google já filtrada */
+  document.querySelectorAll("#app [data-gc]").forEach(el => el.onclick = () => {
+    state.tab = "google"; state.gcamp = el.dataset.gc; state.gkw = null; render(); scrollTo({ top: 0, behavior: "smooth" }); });
   const an = document.getElementById("accNote"); if (an) an.textContent = DATA.meta.account_id;
 }
 
@@ -894,9 +1247,19 @@ const relTime = dt => { const s=Math.max(0,(Date.now()-dt.getTime())/1000);
   if(s<90)return "agora"; const m=Math.round(s/60); if(m<60)return "há "+m+" min";
   const h=Math.floor(m/60); if(h<48)return "há "+h+" h"; return "há "+Math.round(h/24)+" d"; };
 
-fetch("data.json?" + Date.now()).then(r => r.json()).then(d => {
+/* Google é opcional: se data-google.json não existir ou falhar, o painel segue só com Meta */
+const loadGoogle = fetch("data-google.json?" + Date.now())
+  .then(r => r.ok ? r.json() : null).catch(() => null);
+
+Promise.all([fetch("data.json?" + Date.now()).then(r => r.json()), loadGoogle]).then(([d, g]) => {
   DATA = d;
-  document.getElementById("brandTitle").textContent = d.meta.client + " · Meta Ads";
+  if (g && Array.isArray(g.daily) && g.daily.length) GDATA = g;
+  document.getElementById("brandTitle").textContent = d.meta.client + (GDATA ? " · Meta + Google Ads" : " · Meta Ads");
+  if (GDATA){
+    document.getElementById("gaccWrap").hidden = false;
+    document.getElementById("gacc").textContent = GDATA.meta.account_label || GDATA.meta.account_id;
+    document.title = "Painel Geoplas · Meta + Google Ads";
+  }
   document.querySelector(".brand .sub").textContent = d.meta.client_sub;
   document.getElementById("acc").textContent = d.meta.account_id;
   const dt = new Date(d.meta.updated_at);
@@ -904,7 +1267,11 @@ fetch("data.json?" + Date.now()).then(r => r.json()).then(d => {
     : dt.toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) + " · " + relTime(dt);
   ["dFrom","dTo"].forEach(id => {
     const el = document.getElementById(id);
-    el.min = d.meta.first_date; el.max = d.meta.last_date; el.onchange = setCustom;
+    /* o calendário cobre o histórico das duas fontes; os atalhos seguem ancorados no Meta
+       (o alcance oficial só existe para as janelas do Meta) */
+    el.min = GDATA && GDATA.meta.first_date < d.meta.first_date ? GDATA.meta.first_date : d.meta.first_date;
+    el.max = GDATA && GDATA.meta.last_date  > d.meta.last_date  ? GDATA.meta.last_date  : d.meta.last_date;
+    el.onchange = setCustom;
   });
   setPreset(d.meta.default_period || "last_30d");
 }).catch(e => {
