@@ -37,7 +37,7 @@ O painel tem **quatro abas**: *Visão geral* e uma por campanha. Cada aba de cam
 
 Alcance é **gente única**. Quem vê o anúncio em três dias é uma pessoa, não três — então o alcance de um período **não é a soma dos dias**. Somar inflava o número em até 90% na visão "Tudo".
 
-Por isso o painel busca na Meta o alcance real de **cada atalho de período** (último dia, 7, 30, 90 dias, este mês, tudo), por conta e por campanha, e guarda em `data.json` → `reach.windows`. Quando você escolhe um atalho, o número exibido é o oficial da Meta.
+Por isso o painel busca na Meta o alcance real de **cada atalho de período** (hoje, ontem, 7, 30, 90 dias, este mês, tudo), por conta e por campanha, e guarda em `data.json` → `reach.windows`. Quando você escolhe um atalho, o número exibido é o oficial da Meta.
 
 Em **intervalo de datas personalizado** o alcance aparece como **—**, porque calcular gente única num intervalo arbitrário exige uma nova consulta à API. Inventar uma estimativa ali seria pior que não mostrar. Todo o resto — investimento, impressões, cliques, resultados e o ranking de criativos — continua funcionando normalmente em qualquer intervalo.
 
@@ -45,7 +45,7 @@ A frequência (impressões ÷ alcance) segue a mesma regra.
 
 ## Filtro de período
 
-- **Atalhos:** último dia, 7, 30, 90 dias, este mês, tudo.
+- **Atalhos:** hoje, ontem, 7, 30, 90 dias, este mês, tudo. Igual aos gerenciadores Meta e Google: **7, 30 e 90 dias terminam ontem** (o dia de hoje ainda está incompleto); Hoje, Este mês e Tudo vão até hoje. "Hoje" é a data em Brasília no momento da última coleta — `fetch-meta.mjs` (janelas do alcance) e `index.html` (`presetRange`) usam a mesma regra e precisam continuar iguais.
 - **Data livre:** os dois campos de data no canto direito aceitam qualquer intervalo dentro do histórico disponível. Tudo na página (KPIs, gráfico, cards e ranking de criativos) é recalculado para o intervalo escolhido.
 
 O recorte é feito no navegador a partir das linhas diárias por anúncio guardadas em `data.json` — por isso qualquer intervalo funciona, sem ida à API.
@@ -58,6 +58,7 @@ O recorte é feito no navegador a partir das linhas diárias por anúncio guarda
 |---|---|---|
 | **G1** · `00 - [PRINCIPAIS PRODUTOS] [ACRILICO E ACM]` | Pesquisa | conversões e custo por conversão · anúncios · **palavras-chave** · **termos de pesquisa** |
 | **G2** · `[C2] - [PMAX] - [GEO]` | Performance Max | conversões e custo por conversão · **grupos de recursos** · termos de pesquisa do PMax |
+| **G3, G4…** | qualquer tipo | todas as outras campanhas da conta que tiveram gasto desde `GOOGLE_SINCE` — pausadas e removidas incluídas — para o total bater com o "Total: conta" do gerenciador. Numeradas por ordem de ID (estável); só aparecem nas listas quando gastaram no período escolhido |
 
 - **Filtro de campanha** no topo da aba (Todas · G1 · G2) recorta a página inteira. Clicar numa **palavra-chave** filtra os termos de pesquisa que ela acionou — o filtro vira um chip removível (mesmo padrão do painel Exponential).
 - **O que está contando como conversão:** quebra das conversões por ação (WhatsApp, ligação, formulário…), para ninguém confundir "conversão" com venda.

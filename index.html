@@ -312,6 +312,7 @@
   /* ===== Google Ads ===== */
   .gfilter{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
   .gfilter .flab{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:650}
+  #gcampSeg{flex-wrap:wrap}
   .chips{display:flex;gap:6px;flex-wrap:wrap}
   .chip{display:inline-flex;align-items:center;gap:6px;border:0;background:var(--ink);color:var(--surface);font-family:inherit;font-size:11.5px;font-weight:600;padding:6px 11px;border-radius:999px;cursor:pointer}
   .chip span{opacity:.65;font-weight:500}
@@ -414,7 +415,7 @@ const hlp = k => GLOSS[k] ? ` <span class="help" title="${GLOSS[k]}" role="img" 
 
 /* ─────────── estado ─────────── */
 const PRESETS = [
-  ["today","Último dia"], ["last_7d","7 dias"], ["last_30d","30 dias"],
+  ["today","Hoje"], ["yesterday","Ontem"], ["last_7d","7 dias"], ["last_30d","30 dias"],
   ["last_90d","90 dias"], ["this_month","Este mês"], ["all","Tudo"],
 ];
 let DATA = null, TT = null;
@@ -450,17 +451,28 @@ function derive(a){
   a.freq = a.rc > 0 ? a.i / a.rc : 0;
   return a;
 }
+/* Igual aos gerenciadores Meta/Google: 7/30/90 dias terminam ONTEM; Hoje, Este mês
+   e Tudo vão até hoje. "Hoje" = data em Brasília no momento da última coleta — a
+   mesma referência que scripts/fetch-meta.mjs usa para buscar o alcance de cada
+   janela (as duas precisam bater, senão o alcance some). */
+const addDias = (s, n) => { const [y, m, d] = s.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+function hojeRef(){
+  if (DATA.meta.today) return DATA.meta.today;
+  const t = new Date(DATA.meta.updated_at);
+  return isNaN(t) ? DATA.meta.last_date : t.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
 function presetRange(k){
-  const last = DATA.meta.last_date, first = DATA.meta.first_date;
-  const end = new Date(last + "T12:00:00");
-  const back = d => { const x = new Date(end); x.setDate(x.getDate() - (d-1)); return iso(x); };
+  const hoje = hojeRef(), ontem = addDias(hoje, -1), first = DATA.meta.first_date;
+  const ate = n => [addDias(ontem, -(n - 1)), ontem];
   switch(k){
-    case "today":      return [last, last];
-    case "last_7d":    return [back(7),  last];
-    case "last_30d":   return [back(30), last];
-    case "last_90d":   return [back(90), last];
-    case "this_month": return [last.slice(0,7) + "-01", last];
-    default:           return [first, last];
+    case "today":      return [hoje, hoje];
+    case "yesterday":  return [ontem, ontem];
+    case "last_7d":    return ate(7);
+    case "last_30d":   return ate(30);
+    case "last_90d":   return ate(90);
+    case "this_month": return [hoje.slice(0,7) + "-01", hoje];
+    default:           return [first, hoje];
   }
 }
 /* recorte por data + escopo da aba */
@@ -674,7 +686,7 @@ function funnelHTML(A){
     const live = rows.filter(r => typeof r === "object" && r.c);
     const G = GDATA ? gTotals() : null;
     const maxS = Math.max(...live.map(r => r.a.s), ...(G ? Object.values(G.byCamp).map(a => a.s) : []), 1);
-    const gBody = G ? `<div class="cmpsep">Google Ads · clique para abrir</div>` + GDATA.campaigns.map(c => {
+    const gBody = G ? `<div class="cmpsep">Google Ads · clique para abrir</div>` + gVisiveis(G.byCamp).map(c => {
       const a = G.byCamp[c.id];
       if (!a || !a.s) return `<div class="cmprow click" data-gc="${esc(c.id)}"><div class="cl">${esc(c.tag)}<small>${esc(GTYPE[c.type]||c.type)}</small></div>
         <div class="bar-track"><div class="bar-fill" style="width:1.5%"></div></div>
@@ -917,7 +929,9 @@ function notesHTML(){
    estilo do painel Exponential: abas de campanha no topo + clique em
    palavra-chave vira filtro removível (chip) dos termos de pesquisa.        */
 let GDATA = null;
-const GTYPE = { SEARCH:"Pesquisa", PERFORMANCE_MAX:"Performance Max" };
+const GTYPE = { SEARCH:"Pesquisa", PERFORMANCE_MAX:"Performance Max", DISPLAY:"Display", VIDEO:"Vídeo",
+  DEMAND_GEN:"Geração de demanda", SHOPPING:"Shopping", MULTI_CHANNEL:"App", LOCAL:"Local", SMART:"Inteligente" };
+const GSTATUS = { ENABLED:"ativa", PAUSED:"pausada", REMOVED:"removida" };
 const MATCH = { EXACT:"exata", PHRASE:"frase", BROAD:"ampla" };
 const GKEYS = ["s","i","ck","cv","vl"];
 /* conversão pode vir fracionada (o Google divide o crédito) */
@@ -933,7 +947,7 @@ const gDerive = a => {
   return a;
 };
 const inRange = r => r.d >= state.from && r.d <= state.to;
-const gStatus = s => s === "ENABLED" ? `<span class="st on">ativo</span>` : `<span class="st off">${s === "PAUSED" ? "pausado" : esc((s || "—").toLowerCase())}</span>`;
+const gStatus = s => s === "ENABLED" ? `<span class="st on">ativo</span>` : `<span class="st off">${s === "PAUSED" ? "pausado" : s === "REMOVED" ? "removido" : esc((s || "—").toLowerCase())}</span>`;
 
 /* totais por campanha no período atual (usado também na Visão geral) */
 function gTotals(){
@@ -944,6 +958,8 @@ function gTotals(){
   return { byCamp, total };
 }
 const gScopeCamps = () => state.gcamp === "all" ? GDATA.campaigns : GDATA.campaigns.filter(c => c.id === state.gcamp);
+/* nas listas por campanha: ativas sempre; pausadas/removidas só se gastaram no período */
+const gVisiveis = byCamp => GDATA.campaigns.filter(c => c.status === "ENABLED" || (byCamp[c.id] && byCamp[c.id].s > 0));
 
 function gSlice(){
   const ids = new Set(gScopeCamps().map(c => c.id)), inS = r => ids.has(r.c);
@@ -992,8 +1008,12 @@ function gRank(list){
 }
 
 function gFilterHTML(){
-  const opts = [["all", "Todas as campanhas"]].concat(
-    GDATA.campaigns.map(c => [c.id, c.tag + " · " + (GTYPE[c.type] || c.type)]));
+  /* botões: campanhas ativas sempre; pausadas/removidas só se gastaram no período
+     (senão a barra enche de campanha antiga que não tem nada para mostrar) */
+  const { byCamp } = gTotals();
+  const opts = [["all", "Todas as campanhas"]].concat(GDATA.campaigns
+    .filter(c => c.status === "ENABLED" || (byCamp[c.id] && byCamp[c.id].s > 0) || c.id === state.gcamp)
+    .map(c => [c.id, c.tag + " · " + (GTYPE[c.type] || c.type) + (c.status !== "ENABLED" ? " (" + (GSTATUS[c.status] || c.status) + ")" : "")]));
   const chips = state.gkw
     ? `<div class="chips"><button class="chip" data-x="gkw"><span>palavra-chave:</span>${esc(state.gkw)} ✕</button></div>` : "";
   return `<div class="gfilter"><span class="flab">Campanha</span>
@@ -1009,7 +1029,7 @@ function gHeroHTML(G){
       return `a <b>${esc(c.tag)}</b> (${esc(GTYPE[c.type] || c.type)}) gerou <b>${CV(a.cv)}</b> ${a.cv === 1 ? "conversão" : "conversões"} a ${uCost(a.s, a.cv)} cada`; });
     const lista = fr.length > 1 ? fr.slice(0, -1).join(", ") + " e " + fr[fr.length - 1] : (fr[0] || "");
     const ttl = !t.s ? "Sem veiculação no período selecionado"
-      : live.length > 1 ? "Pesquisa e Performance Max rodando juntas" : "Uma campanha ativa no período";
+      : live.length > 1 ? `${live.length} campanhas com veiculação no período` : "Uma campanha com veiculação no período";
     return `<div class="obj"><div>
       <div class="eye">Google Ads · ${GDATA.campaigns.length} campanhas · conta ${esc(GDATA.meta.account_label)}</div>
       <div class="ttl">${ttl}</div>
@@ -1048,7 +1068,7 @@ function gKpisHTML(G){
 
 function gCampRowsHTML(G){
   const maxS = Math.max(...Object.values(G.byCamp).map(a => a.s), 1);
-  const body = GDATA.campaigns.map(c => {
+  const body = gVisiveis(G.byCamp).map(c => {
     const a = G.byCamp[c.id];
     if (!a || !a.s) return `<div class="cmprow click" data-gc="${esc(c.id)}"><div class="cl">${esc(c.tag)}<small>${esc(GTYPE[c.type] || c.type)}</small></div>
       <div class="bar-track"><div class="bar-fill" style="width:1.5%"></div></div>
@@ -1107,8 +1127,8 @@ const gTag = id => { const c = GDATA.campaigns.find(x => x.id === id); return c 
 function gAdsHTML(G){
   const list = gRank((GDATA.ads || []).filter(ad => G.byAd[ad.id] && G.byAd[ad.id].s > 0)
     .map(ad => ({ ad, a: G.byAd[ad.id] })));
-  return gTable({ title:"Anúncios · Pesquisa", list,
-    sub:`${list.length} ${list.length === 1 ? "anúncio" : "anúncios"} · do mais barato ao mais caro por conversão · título = 3 primeiros headlines`,
+  return gTable({ title:"Anúncios", list,
+    sub:`${list.length} ${list.length === 1 ? "anúncio" : "anúncios"} · do mais barato ao mais caro por conversão · na Pesquisa, título = 3 primeiros headlines`,
     cols:["Anúncio", ...G_MCOLS, "Status", "Sinal"],
     row:(x, sp) => `<td><span class="cfull">${esc(x.ad.title)}</span><span class="sub2">${esc(gTag(x.ad.c))} · grupo ${esc(x.ad.agn)}</span></td>
       ${gMetricCells(x, sp)}<td>${gStatus(x.ad.status)}</td><td>${sgTag(x)}</td>` });
@@ -1179,12 +1199,13 @@ function renderGoogle(){
   const G = gSlice(), nd = G.series.length;
   const camps = gScopeCamps();
   const hasS = camps.some(c => c.type === "SEARCH"), hasP = camps.some(c => c.type === "PERFORMANCE_MAX");
+  const hasA = camps.some(c => c.type !== "PERFORMANCE_MAX");   // anúncios existem em todo tipo menos PMax
   const cs = state.gcamp === "all" ? null : camps[0];
   document.getElementById("rangenote").innerHTML =
     `Exibindo <b>${brD(state.from)}</b> até <b>${brD(state.to)}</b> · <b>${nd}</b> ${nd === 1 ? "dia" : "dias"} com veiculação · <b>${BRL(G.total.s)}</b> investidos ${cs ? "em <b>" + esc(cs.tag) + "</b>" : "no Google Ads"}${state.preset === null ? " · <b>intervalo personalizado</b>" : ""}`;
   document.getElementById("app").innerHTML = gFilterHTML() + gHeroHTML(G) + (G.scoped.length
     ? gKpisHTML(G) + (state.gcamp === "all" ? gCampRowsHTML(G) : "") + trendHTML() + gActsHTML(G) + gDiagHTML(G)
-      + (hasS ? gAdsHTML(G) + gKwHTML(G) : "") + (hasP ? gAgHTML(G) : "") + gTermsHTML(G) + gNotesHTML()
+      + (hasA ? gAdsHTML(G) : "") + (hasS ? gKwHTML(G) : "") + (hasP ? gAgHTML(G) : "") + gTermsHTML(G) + gNotesHTML()
     : `<div class="panel"><div class="empty">Nada veiculou no Google neste recorte.<br>Escolha outro período ou clique em <b>Tudo</b>.</div></div>`);
   if (G.scoped.length) paintTrend(G);
   document.querySelectorAll("#gcampSeg button").forEach(b => b.onclick = () => {
@@ -1270,7 +1291,7 @@ Promise.all([fetch("data.json?" + Date.now()).then(r => r.json()), loadGoogle]).
     /* o calendário cobre o histórico das duas fontes; os atalhos seguem ancorados no Meta
        (o alcance oficial só existe para as janelas do Meta) */
     el.min = GDATA && GDATA.meta.first_date < d.meta.first_date ? GDATA.meta.first_date : d.meta.first_date;
-    el.max = GDATA && GDATA.meta.last_date  > d.meta.last_date  ? GDATA.meta.last_date  : d.meta.last_date;
+    el.max = [d.meta.last_date, GDATA ? GDATA.meta.last_date : "", hojeRef()].sort().pop();   // o mais recente
     el.onchange = setCustom;
   });
   setPreset(d.meta.default_period || "last_30d");

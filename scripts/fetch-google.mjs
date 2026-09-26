@@ -129,46 +129,62 @@ async function main() {
   const until = new Date().toISOString().slice(0, 10);
   const RANGE = `segments.date BETWEEN '${SINCE}' AND '${until}'`;
 
-  // 1) resolve as campanhas do PLAN (por id fixado ou pelo nome)
+  // 1) todas as campanhas da conta — inclusive pausadas e removidas, porque o
+  //    "Total: conta" do gerenciador também soma o que elas gastaram
   const allCamps = await gaql(`
     SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type,
            campaign_budget.amount_micros
-    FROM campaign WHERE campaign.status != 'REMOVED'`);
-  const resolved = PLAN.map(p => {
-    const hit = allCamps.find(r => p.id ? String(r.campaign.id) === String(p.id) : norm(r.campaign.name) === norm(p.match));
-    return { p, r: hit };
-  });
-  const faltando = resolved.filter(x => !x.r);
-  if (faltando.length) {
-    console.error("Campanhas do PLAN não encontradas: " + faltando.map(x => x.p.match).join(" | "));
-    console.error("Campanhas existentes na conta:");
-    for (const r of allCamps) console.error(`    ${r.campaign.id}  ${r.campaign.status.padEnd(8)} ${r.campaign.advertisingChannelType.padEnd(16)} ${r.campaign.name}`);
-    if (faltando.length === PLAN.length) throw new Error("nenhuma campanha do PLAN encontrada — confira os nomes no bloco PLAN");
-  }
-  const ok = resolved.filter(x => x.r);
-  const IDS = ok.map(x => String(x.r.campaign.id));
-  const IN  = `campaign.id IN (${IDS.join(",")})`;
+    FROM campaign`);
+  const campById = Object.fromEntries(allCamps.map(r => [String(r.campaign.id), r]));
 
-  const campaigns = ok.map(({ p, r }) => ({
-    id: String(r.campaign.id), key: p.key, tag: p.tag,
-    name: r.campaign.name, label: p.label, goal: p.goal,
-    type: r.campaign.advertisingChannelType,          // SEARCH | PERFORMANCE_MAX
-    status: r.campaign.status,                          // ENABLED | PAUSED
-    daily_budget: r.campaignBudget?.amountMicros ? money(r.campaignBudget.amountMicros) : null,
-  }));
-  const isType = t => campaigns.filter(c => c.type === t).map(c => c.id);
-  const SEARCH = isType("SEARCH"), PMAX = isType("PERFORMANCE_MAX");
-
-  // 2) diário por campanha — base de KPIs, tendência e filtro de data
+  // 2) diário por campanha, conta inteira — base de KPIs, tendência e filtro de data
   const dRows = await gaql(`
     SELECT segments.date, campaign.id, metrics.cost_micros, metrics.impressions,
            metrics.clicks, metrics.conversions, metrics.conversions_value
-    FROM campaign WHERE ${IN} AND ${RANGE}`);
+    FROM campaign WHERE ${RANGE}`);
   const daily = dRows
     .map(r => lean({ d: r.segments.date, c: String(r.campaign.id), ...met(r.metrics) }))
     .filter(r => r.i || r.s)
     .sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
   if (!daily.length) throw new Error("nenhuma linha com dados — confira GOOGLE_CUSTOMER_ID, a MCC e o período");
+  const comDados = new Set(daily.map(r => r.c));
+
+  // campanhas fixadas no PLAN (G1, G2…) + todas as outras que veicularam no período,
+  // numeradas G3, G4… por ordem de ID (estável entre execuções: campanha nova tem ID maior)
+  const fixadas = PLAN.map(p => {
+    const r = p.id ? campById[String(p.id)] : allCamps.find(x => norm(x.campaign.name) === norm(p.match));
+    if (!r) console.warn(`    aviso: campanha do PLAN não encontrada: ${p.tag} ${p.id || p.match}`);
+    return r ? { p, r } : null;
+  }).filter(Boolean);
+  const idsFixados = new Set(fixadas.map(x => String(x.r.campaign.id)));
+  const extras = [...comDados].filter(id => !idsFixados.has(id) && campById[id])
+    .sort((a, b) => (BigInt(a) < BigInt(b) ? -1 : 1));
+  let n = PLAN.length;
+  const TIPO = { SEARCH: "Pesquisa", PERFORMANCE_MAX: "Performance Max", DISPLAY: "Display", VIDEO: "Vídeo",
+    DEMAND_GEN: "Geração de demanda", SHOPPING: "Shopping", MULTI_CHANNEL: "App", LOCAL: "Local", SMART: "Inteligente" };
+  const todas = fixadas.concat(extras.map(id => {
+    const r = campById[id], tag = `G${++n}`;
+    const st = r.campaign.status === "ENABLED" ? "ativa" : r.campaign.status === "PAUSED" ? "pausada" : "removida";
+    return { r, p: { key: tag, tag,
+      label: `${TIPO[r.campaign.advertisingChannelType] || r.campaign.advertisingChannelType} · ${r.campaign.name}`,
+      goal: `Campanha ${st} — entra no painel para o total bater com o gerenciador.` } };
+  }));
+
+  const campaigns = todas.map(({ p, r }) => ({
+    id: String(r.campaign.id), key: p.key, tag: p.tag,
+    name: r.campaign.name, label: p.label, goal: p.goal,
+    type: r.campaign.advertisingChannelType,          // SEARCH | PERFORMANCE_MAX | DISPLAY | …
+    status: r.campaign.status,                          // ENABLED | PAUSED | REMOVED
+    daily_budget: r.campaignBudget?.amountMicros ? money(r.campaignBudget.amountMicros) : null,
+  }));
+  const IDS = campaigns.map(c => c.id);
+  const IN  = `campaign.id IN (${IDS.join(",")})`;
+  // linha diária de campanha que não entrou na lista (não deveria existir) sai do total
+  for (let i = daily.length - 1; i >= 0; i--) if (!IDS.includes(daily[i].c)) daily.splice(i, 1);
+  const isType = t => campaigns.filter(c => c.type === t).map(c => c.id);
+  const SEARCH = isType("SEARCH"), PMAX = isType("PERFORMANCE_MAX");
+  // anúncios (ad_group_ad) existem em todo tipo menos PMax
+  const COM_ANUNCIO = campaigns.filter(c => c.type !== "PERFORMANCE_MAX").map(c => c.id);
 
   // 3) o que é uma "conversão" — quebra por ação de conversão
   const conv_actions = await optional("conversões por ação", async () => (await gaql(`
@@ -176,27 +192,28 @@ async function main() {
       FROM campaign WHERE ${IN} AND ${RANGE} AND metrics.conversions > 0`))
     .map(r => ({ d: r.segments.date, c: String(r.campaign.id), n: r.segments.conversionActionName, cv: dec(r.metrics.conversions) })));
 
-  // 4) Search — anúncios, palavras-chave e termos de pesquisa
+  // 4) anúncios (todo tipo menos PMax) · palavras-chave e termos (só Pesquisa)
   let ads = [], ad_daily = [], keywords = [], kw_daily = [], search_terms = [];
-  if (SEARCH.length) {
-    const INS = `campaign.id IN (${SEARCH.join(",")})`;
+  if (COM_ANUNCIO.length) {
     const adRows = await optional("anúncios", () => gaql(`
-      SELECT segments.date, campaign.id, ad_group.id, ad_group.name, ad_group_ad.ad.id,
+      SELECT segments.date, campaign.id, ad_group.id, ad_group.name, ad_group_ad.ad.id, ad_group_ad.ad.name,
              ad_group_ad.status, ad_group_ad.ad.type, ad_group_ad.ad.responsive_search_ad.headlines,
              metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value
-      FROM ad_group_ad WHERE ${INS} AND ${RANGE}`));
+      FROM ad_group_ad WHERE campaign.id IN (${COM_ANUNCIO.join(",")}) AND ${RANGE}`));
     const adMeta = {};
     for (const r of adRows) {
       const id = String(r.adGroupAd.ad.id);
       const hl = r.adGroupAd.ad.responsiveSearchAd?.headlines || [];
       adMeta[id] ||= { id, c: String(r.campaign.id), ag: String(r.adGroup.id), agn: r.adGroup.name,
-        title: hl.slice(0, 3).map(h => h.text).join(" | ") || `Anúncio ${id.slice(-5)}`,
+        title: hl.slice(0, 3).map(h => h.text).join(" | ") || r.adGroupAd.ad.name || `Anúncio ${id.slice(-5)}`,
         status: r.adGroupAd.status };
       const row = lean({ d: r.segments.date, a: id, c: String(r.campaign.id), ...met(r.metrics) });
       if (row.i || row.s) ad_daily.push(row);
     }
     ads = Object.values(adMeta).filter(a => ad_daily.some(r => r.a === a.id));
-
+  }
+  if (SEARCH.length) {
+    const INS = `campaign.id IN (${SEARCH.join(",")})`;
     const kwRows = await optional("palavras-chave", () => gaql(`
       SELECT segments.date, campaign.id, ad_group.id, ad_group.name, ad_group_criterion.criterion_id,
              ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.status,

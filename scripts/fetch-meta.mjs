@@ -148,15 +148,23 @@ function toRow(r) {
    Alcance é gente ÚNICA: não pode ser somado entre dias nem entre campanhas.
    Então buscamos o número pronto na Meta para cada atalho de período que o
    painel oferece. Intervalo personalizado fica sem alcance (mostra "—").     */
-function janelas(first, last) {
-  const d = x => { const y = new Date(last + "T12:00:00"); y.setDate(y.getDate() - (x - 1)); return y.toISOString().slice(0, 10); };
+/* Mesmas janelas dos atalhos do index.html (presetRange) — as duas precisam
+   bater exatamente, senão o painel não encontra o alcance da janela.
+   Igual aos gerenciadores Meta/Google: 7/30/90 dias terminam ONTEM; "Hoje",
+   "Este mês" e "Tudo" vão até hoje. `hoje` = data em Brasília no momento da coleta. */
+const addDias = (iso, n) => { const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const hojeSP = agora => agora.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+function janelas(first, hoje) {
+  const ontem = addDias(hoje, -1), ate = n => ({ from: addDias(ontem, -(n - 1)), until: ontem });
   return {
-    today:      { from: last,                    until: last },
-    last_7d:    { from: d(7),                    until: last },
-    last_30d:   { from: d(30),                   until: last },
-    last_90d:   { from: d(90),                   until: last },
-    this_month: { from: last.slice(0, 7) + "-01", until: last },
-    all:        { from: first,                   until: last },
+    today:      { from: hoje,  until: hoje },
+    yesterday:  { from: ontem, until: ontem },
+    last_7d:    ate(7),
+    last_30d:   ate(30),
+    last_90d:   ate(90),
+    this_month: { from: hoje.slice(0, 7) + "-01", until: hoje },
+    all:        { from: first, until: hoje },
   };
 }
 
@@ -276,7 +284,8 @@ async function main() {
   });
 
   const dates = daily.map(r => r.d);
-  const reach = await alcancePorJanela(dates[0], dates[dates.length - 1]);
+  const AGORA = new Date(), HOJE = hojeSP(AGORA);
+  const reach = await alcancePorJanela(dates[0], HOJE);
 
   const data = {
     meta: {
@@ -286,7 +295,8 @@ async function main() {
       client_sub: "Soluções em plástico · ACM, Policarbonato e Acrílico",
       currency: "BRL",
       tz: "America/Sao_Paulo",
-      updated_at: new Date().toISOString(),
+      updated_at: AGORA.toISOString(),
+      today: HOJE,               // referência dos atalhos (Brasília) — o painel usa a mesma
       seed: false,
       first_date: dates[0],
       last_date: dates[dates.length - 1],
