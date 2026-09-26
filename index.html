@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Painel Geoplas · Meta Ads</title>
+<title>Painel de performance · Corvo</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link rel="apple-touch-icon" href="favicon.png" />
 <style>
@@ -251,7 +251,7 @@
   .gm .gv{font-family:var(--font-mono);font-size:13px;font-weight:600;letter-spacing:-.3px;}
 </style>
 <style id="geo">
-  /* ===== Geoplas — complementos sobre o mesmo sistema ===== */
+  /* ===== complementos do painel (Geoplas, Vuou…) sobre o mesmo sistema ===== */
 
   /* grade de KPIs se adapta a quantas campanhas o cliente tem */
   .kpis{grid-template-columns:repeat(auto-fit,minmax(148px,1fr))}
@@ -355,7 +355,7 @@
   <div class="top-in">
     <div class="brand">
       <img class="raven" src="logo-mark.png" alt="Corvo Assessoria" />
-      <div><h1 id="brandTitle">Geoplas</h1><div class="sub">Painel de performance · Corvo Assessoria</div></div>
+      <div><h1 id="brandTitle">Painel</h1><div class="sub">Painel de performance · Corvo Assessoria</div></div>
     </div>
     <div class="top-right">
       <div class="mi">Conta Meta Ads<b class="tnum" id="acc">—</b></div>
@@ -415,10 +415,10 @@ const GLOSS = {
   p50:"Viram 50%: pessoas que assistiram pelo menos metade do vídeo. É a meta principal da campanha de reconhecimento.",
   thruplay:"ThruPlay: reproduções do vídeo até o fim, ou por pelo menos 15 segundos.",
   reproducoes:"Reproduções: quantas vezes o vídeo começou a ser exibido.",
-  conversas:"Conversas iniciadas (Meta: 'Conversas por mensagem iniciadas'): quantas vezes alguém começou a conversar com a Geoplas no direct, Messenger ou WhatsApp a partir do anúncio. Conta tanto quem nunca tinha escrito quanto quem voltou a escrever depois de 7 dias parado. É uma contagem de CONVERSAS — a mesma pessoa pode contar mais de uma vez no período.",
-  conexoes:"Contatos por mensagem: PESSOAS diferentes que trocaram mensagem com a Geoplas a partir do anúncio. Fica abaixo das conversas iniciadas porque cada pessoa conta uma vez só, mesmo que tenha aberto mais de uma conversa.",
+  conversas:"Conversas iniciadas (Meta: 'Conversas por mensagem iniciadas'): quantas vezes alguém começou a conversar com a empresa no direct, Messenger ou WhatsApp a partir do anúncio. Conta tanto quem nunca tinha escrito quanto quem voltou a escrever depois de 7 dias parado. É uma contagem de CONVERSAS — a mesma pessoa pode contar mais de uma vez no período.",
+  conexoes:"Contatos por mensagem: PESSOAS diferentes que trocaram mensagem com a empresa a partir do anúncio. Fica abaixo das conversas iniciadas porque cada pessoa conta uma vez só, mesmo que tenha aberto mais de uma conversa.",
   saudacao:"Saudação vista: pessoas que abriram a conversa e viram a mensagem automática de boas-vindas.",
-  resposta:"Conversas novas (Meta: 'New messaging conversations'): conversas com quem NUNCA tinha mandado mensagem para a Geoplas antes. É a parte das conversas iniciadas que é contato 100% novo — o resto é gente que já conversava e voltou.",
+  resposta:"Conversas novas (Meta: 'New messaging conversations'): conversas com quem NUNCA tinha mandado mensagem para a empresa antes. É a parte das conversas iniciadas que é contato 100% novo — o resto é gente que já conversava e voltou.",
   hook:"Hook rate: de cada 100 vezes que o vídeo apareceu na tela, em quantas a pessoa assistiu pelo menos 3 segundos (visualizações de 3s ÷ impressões). Mede se o começo do vídeo segura a rolagem.",
   ret50:"Retenção 50%: de quem assistiu 3 segundos, quantos chegaram à metade do vídeo (visualizações de 50% ÷ visualizações de 3s). Mede se o vídeo segura depois do gancho.",
   rep7:"Responderam em 7 dias: pessoas que voltaram a escrever depois da sua resposta, dentro de 7 dias.",
@@ -452,6 +452,7 @@ function reachFor(scopeId){
   if (w.from !== state.from || w.until !== state.to) return { v:null, why:"só nos atalhos de período" };
   const v = scopeId ? (w.c || {})[scopeId] : w.acc;
   if (typeof v === "number") return { v, why:null };
+  if (scopeId && w.c && scopeId in w.c) return { v:null, why:"várias campanhas no grupo — alcance único não soma" };
   return { v:null, why: (!scopeId && w.acc_note) ? w.acc_note : "não disponível nesta janela" };
 }
 const state = { tab: "geral", preset: "last_30d", from: null, to: null, trend: "s", adView: "table",
@@ -612,7 +613,9 @@ function heroHTML(A){
     <div class="eye">${esc(c.tag)} · objetivo principal ${badge}</div>
     <div class="ttl">${esc(c.kpi_label)}</div>
     <div class="nt">${nt}</div>
-    <div class="camptech">${esc(c.name)}${c.daily_budget ? " · orçamento R$" + c.daily_budget + "/dia" : ""}</div></div>
+    <div class="camptech">${c.members && c.members.length > 1
+      ? esc(c.members.length + " campanhas no grupo: " + c.members.map(m => m.name + (m.status === "ACTIVE" ? " (ativa)" : "")).join(" · "))
+      : esc(c.name)}${c.daily_budget ? " · orçamento R$" + c.daily_budget + "/dia" : ""}</div></div>
     <div class="big"><div class="v tnum">${NUM(v)}</div><div class="l">${esc(plural(c.kpi_unit, v))} · ${uCost(t.s, v)} cada</div></div></div>`;
 }
 
@@ -624,8 +627,8 @@ function kpisHTML(A){
     const HK = { fol:"seguidores", p50:"p50", conv:"conversas", tp:"thruplay", res:"visitas", lc:"linkclick" };
     const porCampanha = DATA.campaigns
       .filter(c => A.byCamp[c.id] && A.byCamp[c.id].s > 0)
-      /* com Google: só seguidores e conversas (views de vídeo não se compara entre plataformas) */
-      .filter(c => !GDATA || c.kpi === "fol" || c.kpi === "conv")
+      /* com Google: fica de fora só a campanha de vídeo (views não se comparam entre plataformas) */
+      .filter(c => !GDATA || c.kpi !== "p50")
       .map(c => {
         const a = A.byCamp[c.id], v = a[c.kpi] || 0;
         return { k:c.kpi_label, v:NUM(v), s:uCost(a.s, v) + " cada · " + esc(c.tag), hk:HK[c.kpi] };
@@ -1374,10 +1377,11 @@ Promise.all([fetch("data.json?" + Date.now()).then(r => r.json()), loadGoogle]).
   DATA = d;
   if (g && Array.isArray(g.daily) && g.daily.length) GDATA = g;
   document.getElementById("brandTitle").textContent = d.meta.client + (GDATA ? " · Meta + Google Ads" : " · Meta Ads");
+  document.title = "Painel " + d.meta.client + (GDATA ? " · Meta + Google Ads" : " · Meta Ads");
   if (GDATA){
     document.getElementById("gaccWrap").hidden = false;
     document.getElementById("gacc").textContent = GDATA.meta.account_label || GDATA.meta.account_id;
-    document.title = "Painel Geoplas · Meta + Google Ads";
+    
   }
   document.querySelector(".brand .sub").textContent = d.meta.client_sub;
   document.getElementById("acc").textContent = d.meta.account_id;

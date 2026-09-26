@@ -17,11 +17,15 @@ const CLIENT   = env("GOOGLE_CLIENT_ID");
 const SECRET   = env("GOOGLE_CLIENT_SECRET");
 const DEV_TOK  = env("GOOGLE_DEVELOPER_TOKEN");
 const CUSTOMER = (process.env.GOOGLE_CUSTOMER_ID || "2241532672").replace(/-/g, "");
-// MCC pela qual o usuário do token enxerga a conta. "none" = acesso direto, sem MCC.
-// Geoplas: a conta NÃO está vinculada à MCC 914-731-2925 — o usuário do token
-// acessa a conta diretamente, então o padrão aqui é "none".
-const MCC_RAW  = process.env.GOOGLE_LOGIN_CUSTOMER_ID || "none";
-const MCC      = /^(none|direto)$/i.test(MCC_RAW.trim()) ? "" : MCC_RAW.replace(/-/g, "");
+const CLIENTE  = "Geoplas";
+// Por onde o usuário do token enxerga a conta: direto, ou por uma MCC.
+// Padrão "auto": tenta direto e, se o Google recusar, pela MCC 914-731-2925
+// (a MCC do Victor, dona do developer token). A Geoplas é acessada direto.
+// Para forçar: GOOGLE_LOGIN_CUSTOMER_ID = "none" (direto) ou o ID da MCC.
+const MCC_RAW  = (process.env.GOOGLE_LOGIN_CUSTOMER_ID || "auto").trim();
+const MCC_CANDIDATAS = /^auto$/i.test(MCC_RAW) ? ["", "9147312925"]
+  : /^(none|direto)$/i.test(MCC_RAW) ? [""] : [MCC_RAW.replace(/-/g, "")];
+let MCC = null;   // definida por descobrirAcesso()
 const SINCE    = process.env.GOOGLE_SINCE || "2026-01-01";
 const API_VER  = process.env.GOOGLE_API_VER || "v25";
 
@@ -89,6 +93,18 @@ async function gaql(query) {
   return out;
 }
 
+/* testa cada caminho de acesso (direto / MCC) com uma consulta mínima e fica com o primeiro que funciona */
+async function descobrirAcesso() {
+  const erros = [];
+  for (const cand of MCC_CANDIDATAS) {
+    MCC = cand;
+    try { await gaql("SELECT customer.id FROM customer LIMIT 1");
+      console.log(`    acesso à conta ${CUSTOMER}: ${cand ? "via MCC " + cand : "direto"}`); return; }
+    catch (e) { erros.push(`${cand ? "via MCC " + cand : "direto"}: ${e.message}`); }
+  }
+  throw new Error("sem acesso à conta " + CUSTOMER + " — " + erros.join(" | "));
+}
+
 /* relatório secundário: se falhar, registra o aviso e segue sem ele */
 const WARN = [];
 async function optional(nome, fn, vazio = []) {
@@ -126,6 +142,7 @@ async function main() {
   ].filter(([, ok]) => !ok);
   if (forma.length) throw new Error("secret com formato estranho: " + forma.map(([k, , why]) => `${k} (${why})`).join("; "));
   TOKEN = await getAccessToken();
+  await descobrirAcesso();
   const until = new Date().toISOString().slice(0, 10);
   const RANGE = `segments.date BETWEEN '${SINCE}' AND '${until}'`;
 
@@ -282,7 +299,8 @@ async function main() {
       source: "google",
       account_id: CUSTOMER,
       account_label: CUSTOMER.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3"),
-      client: "Geoplas",
+      client: CLIENTE,
+      login_customer_id: MCC || null,
       currency: "BRL",
       tz: "America/Sao_Paulo",
       api_version: API_VER,
