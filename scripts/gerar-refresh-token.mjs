@@ -97,7 +97,9 @@ if (!rows) {
   erros.forEach(e => console.log("   - " + e));
   const tudo = erros.join(" ");
   console.log("\nO que isso quer dizer:");
-  if (/DEVELOPER_TOKEN_NOT_APPROVED|test account|conta de teste/i.test(tudo))
+  if (/CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION/.test(tudo))
+    console.log("   → o PROJETO do Google Cloud deste Client ID não tem acesso de produção (desde 09/09/2026 o nível\n     de acesso é do projeto, não do token). Peça acesso na página da Google Ads API do projeto no Cloud\n     Console, ou crie o Client ID dentro do projeto que já tem o acesso aprovado.");
+  else if (/DEVELOPER_TOKEN_NOT_APPROVED|test account|conta de teste/i.test(tudo))
     console.log("   → o developer token está com ACESSO DE TESTE: só lê contas de teste. Peça acesso Básico/Explorador na Central de API.");
   else if (/DEVELOPER_TOKEN|developer token/i.test(tudo))
     console.log("   → problema com o developer token (copiado errado ou revogado). Confira na Central de API da MCC.");
