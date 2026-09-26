@@ -84,7 +84,7 @@ O recorte é feito no navegador a partir das linhas diárias por anúncio guarda
 | Nome | Padrão | Quando mudar |
 |---|---|---|
 | `GOOGLE_CUSTOMER_ID` | `2241532672` | só se trocar de conta |
-| `GOOGLE_LOGIN_CUSTOMER_ID` | `9147312925` (MCC Corvo) | se a conta estiver em outra MCC; use `none` se o acesso for direto, sem MCC |
+| `GOOGLE_LOGIN_CUSTOMER_ID` | `none` (acesso direto — a Geoplas não está vinculada à MCC 914-731-2925) | só se a conta passar a ser acessada por uma MCC: coloque o ID dela |
 | `GOOGLE_SINCE` | `2026-01-01` | início do histórico puxado |
 
 Antes disso, rode `node scripts/gerar-refresh-token.mjs` **no seu terminal** (não pelo chat): ele faz o login no Google, testa o acesso à conta e às campanhas do PLAN e mostra o refresh token para colar no GitHub. Nada é salvo em disco.

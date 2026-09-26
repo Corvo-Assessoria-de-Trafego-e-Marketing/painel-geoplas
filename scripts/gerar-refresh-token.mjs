@@ -30,7 +30,8 @@ const CLIENT_ID     = await ask("Client ID (termina em .apps.googleusercontent.c
 const CLIENT_SECRET = await ask("Client Secret");
 const DEV_TOKEN     = await ask("Developer Token (Central de API da MCC)");
 const CUSTOMER      = (await ask("ID da conta do cliente", "224-153-2672")).replace(/-/g, "");
-const MCC           = (await ask("ID da MCC", "914-731-2925")).replace(/-/g, "");
+const MCC_IN        = await ask("ID da MCC (Enter = acesso direto, sem MCC)");
+const MCC           = /^(none|direto)$/i.test(MCC_IN) ? "" : MCC_IN.replace(/-/g, "");
 rl.close();
 if (!CLIENT_ID || !CLIENT_SECRET || !DEV_TOKEN) { console.error("\nFaltou Client ID, Client Secret ou Developer Token."); process.exit(1); }
 
@@ -84,7 +85,7 @@ async function search(query, withMcc) {
 const Q = "SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type FROM campaign WHERE campaign.status != 'REMOVED'";
 let rows = null, via = null, erros = [];
 for (const withMcc of [true, false]) {
-  if (!withMcc && !MCC) continue;
+  if (withMcc && !MCC) continue;   // sem MCC informada: só testa o acesso direto
   try { rows = await search(Q, withMcc); via = withMcc ? "MCC" : "direto"; break; }
   catch (e) { erros.push(`${withMcc ? "via MCC " + MCC : "acesso direto"}: ${e.message}`); }
 }
@@ -94,10 +95,21 @@ console.log(`API ${API_VER} · conta ${CUSTOMER}`);
 if (!rows) {
   console.log("✗ Não consegui ler a conta:");
   erros.forEach(e => console.log("   - " + e));
-  console.log("\nCausas comuns: developer token só com 'Acesso de teste'; a conta Google usada no login");
-  console.log("não tem acesso à MCC/conta; ou a Google Ads API não foi ativada no projeto do Google Cloud.");
+  const tudo = erros.join(" ");
+  console.log("\nO que isso quer dizer:");
+  if (/DEVELOPER_TOKEN_NOT_APPROVED|test account|conta de teste/i.test(tudo))
+    console.log("   → o developer token está com ACESSO DE TESTE: só lê contas de teste. Peça acesso Básico/Explorador na Central de API.");
+  else if (/DEVELOPER_TOKEN|developer token/i.test(tudo))
+    console.log("   → problema com o developer token (copiado errado ou revogado). Confira na Central de API da MCC.");
+  else if (/USER_PERMISSION_DENIED|CUSTOMER_NOT_ENABLED|PERMISSION/i.test(tudo))
+    console.log("   → a conta Google usada no login não tem acesso à conta " + CUSTOMER + ". Refaça o login com o e-mail que é usuário dela.");
+  else if (/SERVICE_DISABLED|has not been used|is disabled/i.test(tudo))
+    console.log("   → a Google Ads API não está ativada no projeto do Google Cloud (APIs e serviços → Biblioteca).");
+  else
+    console.log("   → cole este bloco no Claude para diagnóstico.");
 } else {
-  console.log(`✓ Acesso OK (${via === "MCC" ? "via MCC " + MCC + " — não precisa mudar nada" : "DIRETO, sem MCC — no GitHub crie a variável GOOGLE_LOGIN_CUSTOMER_ID com o valor none"})`);
+  console.log(`✓ Acesso OK (${via === "direto" ? "DIRETO, sem MCC — é o padrão do painel, não precisa mudar nada"
+    : "via MCC " + MCC + " — no GitHub crie a variável GOOGLE_LOGIN_CUSTOMER_ID = " + MCC})`);
   for (const nome of CAMPANHAS_ESPERADAS) {
     const hit = rows.find(r => norm(r.campaign.name) === norm(nome));
     console.log(hit ? `✓ achei "${nome}" → id ${hit.campaign.id}, ${hit.campaign.status}, ${hit.campaign.advertisingChannelType}`
