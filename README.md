@@ -84,8 +84,10 @@ O recorte é feito no navegador a partir das linhas diárias por anúncio guarda
 | Nome | Padrão | Quando mudar |
 |---|---|---|
 | `GOOGLE_CUSTOMER_ID` | `2241532672` | só se trocar de conta |
-| `GOOGLE_LOGIN_CUSTOMER_ID` | `9147312925` (MCC Corvo) | se a conta da Geoplas estiver em outra MCC |
+| `GOOGLE_LOGIN_CUSTOMER_ID` | `9147312925` (MCC Corvo) | se a conta estiver em outra MCC; use `none` se o acesso for direto, sem MCC |
 | `GOOGLE_SINCE` | `2026-01-01` | início do histórico puxado |
+
+Antes disso, rode `node scripts/gerar-refresh-token.mjs` **no seu terminal** (não pelo chat): ele faz o login no Google, testa o acesso à conta e às campanhas do PLAN e mostra o refresh token para colar no GitHub. Nada é salvo em disco.
 
 Depois: **Actions → Atualizar dados Geoplas (Meta + Google) → Run workflow** e confira o log do passo *Puxar Google Ads*. Ele lista G1/G2 com investimento e conversões; se algum nome do `PLAN` não bater, lista todas as campanhas da conta com ID para corrigir.
 

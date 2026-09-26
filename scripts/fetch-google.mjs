@@ -13,8 +13,9 @@ const CLIENT   = process.env.GOOGLE_CLIENT_ID;
 const SECRET   = process.env.GOOGLE_CLIENT_SECRET;
 const DEV_TOK  = process.env.GOOGLE_DEVELOPER_TOKEN;
 const CUSTOMER = (process.env.GOOGLE_CUSTOMER_ID || "2241532672").replace(/-/g, "");
-// MCC pela qual o usuário do token enxerga a conta. Vazio = acesso direto.
-const MCC      = (process.env.GOOGLE_LOGIN_CUSTOMER_ID ?? "9147312925").replace(/-/g, "");
+// MCC pela qual o usuário do token enxerga a conta. "none" = acesso direto, sem MCC.
+const MCC_RAW  = process.env.GOOGLE_LOGIN_CUSTOMER_ID || "9147312925";
+const MCC      = /^(none|direto)$/i.test(MCC_RAW.trim()) ? "" : MCC_RAW.replace(/-/g, "");
 const SINCE    = process.env.GOOGLE_SINCE || "2026-01-01";
 const API_VER  = process.env.GOOGLE_API_VER || "v25";
 
