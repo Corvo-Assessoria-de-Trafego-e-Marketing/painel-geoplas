@@ -65,7 +65,7 @@ O recorte é feito no navegador a partir das linhas diárias por anúncio guarda
 - **PMax não tem anúncios nem palavras-chave fixas.** Por isso aparece por grupo de recursos. Os termos do PMax vêm de `campaign_search_term_view`; se a API não entregar esse relatório por dia, o script guarda o total do período e o painel avisa que esses termos não seguem o filtro de data.
 - A **Visão geral** soma o investimento Meta + Google no destaque e lista G1/G2 em *Resultado por campanha* (clique leva para a aba Google). Alcance, CTR, CPC e o gráfico da visão geral seguem sendo só do Meta — o rótulo avisa.
 - Se `data-google.json` não existir, o painel volta a ser só Meta, sem erro.
-- Trocar/adicionar campanha: bloco `PLAN` no topo de `scripts/fetch-google.mjs` (casa pelo **nome** da campanha; o log da execução mostra o ID de cada uma — preencha `id` se o nome for mudar).
+- Trocar/adicionar campanha: bloco `PLAN` no topo de `scripts/fetch-google.mjs`. As campanhas estão fixadas pelo **ID** (G1 `24279335437`, G2 `23296324040`) — renomear no Google Ads não quebra o painel.
 
 ### Ligar o Google Ads (~10 min)
 

@@ -25,16 +25,16 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT  = join(ROOT, "data-google.json");
 
 /* ── campanhas monitoradas ───────────────────────────────────────────────
-   Para trocar/adicionar campanha: edite este bloco. `match` é o nome exato
-   da campanha no Google Ads (maiúsculas e espaços extras são ignorados).
-   Depois da primeira execução o log mostra o ID de cada uma — se o nome da
-   campanha mudar no Google, preencha `id` para não perder o vínculo.        */
+   Para trocar/adicionar campanha: edite este bloco. Com `id` preenchido o
+   vínculo é pelo ID da campanha — o nome pode mudar à vontade no Google.
+   `match` (nome) é só referência legível, usado apenas quando `id` é null
+   (maiúsculas, acentos, travessões e espaços extras são ignorados).       */
 const PLAN = [
-  { match: "00 - [PRINCIPAIS PRODUTOS] [ACRILICO E ACM]", id: null,
+  { match: "00 - [PRINCIPAIS PRODUTOS] [ACRILICO E ACM]", id: "24279335437",
     key: "G1", tag: "G1",
     label: "Pesquisa · Acrílico e ACM",
     goal: "Capturar quem já está buscando acrílico e ACM no Google e transformar a busca em contato." },
-  { match: "[C2] - [PMAX] - [GEO]", id: null,
+  { match: "[C2] - [PMAX] - [GEO]", id: "23296324040",
     key: "G2", tag: "G2",
     label: "Performance Max · Geoplas",
     goal: "Buscar conversões em todas as redes do Google — Pesquisa, YouTube, Display, Gmail e Maps — com a mesma verba." },
