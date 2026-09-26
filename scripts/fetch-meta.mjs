@@ -36,7 +36,7 @@ const PLAN = [
     label: "Depoimentos · Conversas Iniciadas",
     goal: "Transformar prova social em conversa — meta principal: conversas iniciadas no direct/WhatsApp.",
     kpi: "conv", kpi_label: "Conversas iniciadas", kpi_unit: "conversa",
-    kpi2: "conn", kpi2_label: "Conexões de mensagem", kpi2_unit: "conexão" },
+    kpi2: "conn", kpi2_label: "Contatos por mensagem", kpi2_unit: "contato" },
 ];
 const WATCHED = PLAN.map(p => p.id);
 
@@ -108,6 +108,9 @@ function toRow(r) {
   const p75  = sumArr(r.video_p75_watched_actions);
   const p100 = sumArr(r.video_p100_watched_actions);
   const pl   = sumArr(r.video_play_actions);
+  // visualizações de 3 segundos — base do hook rate (v3 ÷ impressões) e da
+  // retenção 50% (p50 ÷ v3). Na API crua é o action_type "video_view".
+  const v3   = pick(a, ["video_view"]);
 
   // resultado padrão por objetivo da campanha
   const plan = PLAN.find(p => p.id === r.campaign_id);
@@ -120,6 +123,7 @@ function toRow(r) {
   if (p75)  o.p75 = p75;
   if (p100) o.p100 = p100;
   if (pl)   o.pl = pl;
+  if (v3)   o.v3 = v3;
 
   // funil de mensagens
   const m = {};
