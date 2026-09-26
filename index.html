@@ -312,7 +312,28 @@
   /* ===== Google Ads ===== */
   .gfilter{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
   .gfilter .flab{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:650}
-  #gcampSeg{flex-wrap:wrap}
+  /* seletor de campanha (todas as campanhas do histórico, ativas no topo) */
+  .gpick{position:relative}
+  .gpick-btn{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border-2);border-radius:12px;padding:8px 13px;font-family:inherit;font-size:12.5px;color:var(--ink);cursor:pointer;box-shadow:var(--shadow);max-width:min(560px,86vw)}
+  .gpick-btn:hover{border-color:var(--accent)}
+  .gpick-btn .lab{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;font-weight:650}
+  .gpick-btn b{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gpick-btn .car{color:var(--muted);font-size:10px}
+  .gpop{position:absolute;top:calc(100% + 6px);left:0;z-index:25;width:min(560px,92vw);background:var(--surface);border:1px solid var(--border-2);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.18);overflow:hidden}
+  .gpop[hidden]{display:none}
+  .gpop input{width:100%;border:0;border-bottom:1px solid var(--border);background:var(--surface-2);color:var(--ink);font-family:inherit;font-size:13px;padding:12px 14px;outline:none}
+  .glist{max-height:min(420px,60vh);overflow-y:auto;padding:6px}
+  .ggrp{font-size:9.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:700;padding:10px 10px 4px}
+  .gopt{display:grid;grid-template-columns:12px 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-radius:9px;cursor:pointer}
+  .gopt:hover,.gopt:focus{background:var(--surface-2);outline:none}
+  .gopt.sel{background:var(--accent-wash)}
+  .gopt .gdot{width:8px;height:8px;border-radius:50%;background:var(--muted);opacity:.45}
+  .gopt .gdot.on{background:var(--good);opacity:1;box-shadow:0 0 0 3px var(--good-wash)}
+  .gopt .gnm{font-size:12.5px;font-weight:600;min-width:0}
+  .gopt .gnm small{display:block;font-family:var(--font-mono);font-size:10.5px;font-weight:500;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gopt .gsp{font-family:var(--font-mono);font-size:11.5px;text-align:right;white-space:nowrap}
+  .gopt .gsp small{display:block;font-family:var(--font-ui);font-size:10px;color:var(--muted)}
+  .gnone{padding:16px;text-align:center;color:var(--muted);font-size:12px}
   .chips{display:flex;gap:6px;flex-wrap:wrap}
   .chip{display:inline-flex;align-items:center;gap:6px;border:0;background:var(--ink);color:var(--surface);font-family:inherit;font-size:11.5px;font-weight:600;padding:6px 11px;border-radius:999px;cursor:pointer}
   .chip span{opacity:.65;font-weight:500}
@@ -1007,18 +1028,67 @@ function gRank(list){
   return list;
 }
 
+/* Seletor de campanha: todas as campanhas do histórico da conta.
+   Ativas no topo (bolinha verde), depois pausadas/removidas da mais recente para
+   a mais antiga. Cada uma mostra quanto gastou no período escolhido. */
 function gFilterHTML(){
-  /* botões: campanhas ativas sempre; pausadas/removidas só se gastaram no período
-     (senão a barra enche de campanha antiga que não tem nada para mostrar) */
   const { byCamp } = gTotals();
-  const opts = [["all", "Todas as campanhas"]].concat(GDATA.campaigns
-    .filter(c => c.status === "ENABLED" || (byCamp[c.id] && byCamp[c.id].s > 0) || c.id === state.gcamp)
-    .map(c => [c.id, c.tag + " · " + (GTYPE[c.type] || c.type) + (c.status !== "ENABLED" ? " (" + (GSTATUS[c.status] || c.status) + ")" : "")]));
+  const ultimo = {};                                   // último dia com gasto, por campanha
+  for (const r of GDATA.daily) if ((r.s || 0) > 0 && (!ultimo[r.c] || r.d > ultimo[r.c])) ultimo[r.c] = r.d;
+  const nome = c => GTYPE[c.type] || c.type;
+  const opt = c => {
+    const a = byCamp[c.id], on = c.status === "ENABLED";
+    const sp = a && a.s > 0 ? `${BRL0(a.s)}<small>${CV(a.cv)} conv. no período</small>`
+      : `—<small>${on ? "sem gasto no período" : "último gasto " + (ultimo[c.id] ? brD(ultimo[c.id]) : "—")}</small>`;
+    return `<div class="gopt${state.gcamp === c.id ? " sel" : ""}" role="option" tabindex="0" data-k="${esc(c.id)}"
+      data-q="${esc((c.tag + " " + c.name + " " + (GTYPE[c.type] || "")).toLowerCase())}">
+      <span class="gdot${on ? " on" : ""}" title="${on ? "ativa" : esc(GSTATUS[c.status] || c.status)}"></span>
+      <span class="gnm">${esc(c.tag)} · ${esc(nome(c))}${on ? "" : ` <span class="mini">(${esc(GSTATUS[c.status] || c.status)})</span>`}<small>${esc(c.name)}</small></span>
+      <span class="gsp">${sp}</span></div>`;
+  };
+  const ativas = GDATA.campaigns.filter(c => c.status === "ENABLED");
+  const outras = GDATA.campaigns.filter(c => c.status !== "ENABLED")
+    .sort((a, b) => (ultimo[b.id] || "").localeCompare(ultimo[a.id] || ""));
+  const atual = state.gcamp === "all" ? null : GDATA.campaigns.find(c => c.id === state.gcamp);
   const chips = state.gkw
     ? `<div class="chips"><button class="chip" data-x="gkw"><span>palavra-chave:</span>${esc(state.gkw)} ✕</button></div>` : "";
-  return `<div class="gfilter"><span class="flab">Campanha</span>
-    <div class="miniseg" id="gcampSeg">${opts.map(([k, l]) =>
-      `<button aria-selected="${state.gcamp === k}" data-k="${esc(k)}">${esc(l)}</button>`).join("")}</div>${chips}</div>`;
+  return `<div class="gfilter"><div class="gpick">
+    <button class="gpick-btn" id="gpickBtn" type="button" aria-haspopup="listbox" aria-expanded="false">
+      <span class="lab">Campanha</span>
+      ${atual ? `<span class="gdot${atual.status === "ENABLED" ? " on" : ""}" style="width:8px;height:8px;border-radius:50%;background:${atual.status === "ENABLED" ? "var(--good)" : "var(--muted)"}"></span>` : ""}
+      <b>${atual ? esc(atual.tag + " · " + atual.name) : "Todas as campanhas"}</b><span class="car">▾</span></button>
+    <div class="gpop" id="gpop" hidden>
+      <input type="search" id="gpickQ" placeholder="Buscar campanha pelo nome…" autocomplete="off">
+      <div class="glist" role="listbox">
+        <div class="gopt${state.gcamp === "all" ? " sel" : ""}" role="option" tabindex="0" data-k="all" data-q="todas">
+          <span></span><span class="gnm">Todas as campanhas<small>soma da conta inteira no período</small></span>
+          <span class="gsp">${BRL0(Object.values(byCamp).reduce((s, a) => s + a.s, 0))}</span></div>
+        ${ativas.length ? `<div class="ggrp">Ativas</div>${ativas.map(opt).join("")}` : ""}
+        ${outras.length ? `<div class="ggrp">Pausadas e removidas</div>${outras.map(opt).join("")}` : ""}
+        <div class="gnone" id="gpickNone" hidden>Nenhuma campanha com esse nome.</div>
+      </div></div></div>${chips}</div>`;
+}
+function wireGPick(){
+  const btn = document.getElementById("gpickBtn"), pop = document.getElementById("gpop"), q = document.getElementById("gpickQ");
+  if (!btn) return;
+  const abrir = v => { pop.hidden = !v; btn.setAttribute("aria-expanded", v); if (v){ q.value = ""; filtrar(); q.focus(); } };
+  const filtrar = () => {
+    const t = q.value.trim().toLowerCase(); let n = 0;
+    pop.querySelectorAll(".gopt").forEach(o => { const ok = !t || o.dataset.q.includes(t); o.hidden = !ok; n += ok; });
+    pop.querySelectorAll(".ggrp").forEach(g => { let x = g.nextElementSibling, vis = false;
+      while (x && !x.classList.contains("ggrp")) { if (x.classList.contains("gopt") && !x.hidden) vis = true; x = x.nextElementSibling; }
+      g.hidden = !vis; });
+    document.getElementById("gpickNone").hidden = n > 0;
+  };
+  const escolher = k => { state.gcamp = k; state.gkw = null; state.gAllTerms = false; render(); };
+  btn.onclick = e => { e.stopPropagation(); abrir(pop.hidden); };
+  q.oninput = filtrar;
+  q.onkeydown = e => { if (e.key === "Escape") abrir(false);
+    if (e.key === "Enter"){ const f = [...pop.querySelectorAll(".gopt")].find(o => !o.hidden); if (f) escolher(f.dataset.k); } };
+  pop.onclick = e => e.stopPropagation();
+  pop.querySelectorAll(".gopt").forEach(o => { o.onclick = () => escolher(o.dataset.k);
+    o.onkeydown = e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); escolher(o.dataset.k); } if (e.key === "Escape") abrir(false); }; });
+  document.onclick = () => { if (!pop.hidden) abrir(false); };
 }
 
 function gHeroHTML(G){
@@ -1208,8 +1278,7 @@ function renderGoogle(){
       + (hasA ? gAdsHTML(G) : "") + (hasS ? gKwHTML(G) : "") + (hasP ? gAgHTML(G) : "") + gTermsHTML(G) + gNotesHTML()
     : `<div class="panel"><div class="empty">Nada veiculou no Google neste recorte.<br>Escolha outro período ou clique em <b>Tudo</b>.</div></div>`);
   if (G.scoped.length) paintTrend(G);
-  document.querySelectorAll("#gcampSeg button").forEach(b => b.onclick = () => {
-    state.gcamp = b.dataset.k; state.gkw = null; state.gAllTerms = false; render(); });
+  wireGPick();
   document.querySelectorAll("#app [data-gc]").forEach(el => el.onclick = () => {
     state.gcamp = el.dataset.gc; state.gkw = null; render(); });
   document.querySelectorAll("#app tr[data-kw]").forEach(el => el.onclick = () => {
