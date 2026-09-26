@@ -8,10 +8,14 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-const REFRESH  = process.env.GOOGLE_REFRESH_TOKEN;
-const CLIENT   = process.env.GOOGLE_CLIENT_ID;
-const SECRET   = process.env.GOOGLE_CLIENT_SECRET;
-const DEV_TOK  = process.env.GOOGLE_DEVELOPER_TOKEN;
+// secrets colados no GitHub costumam trazer espaço/quebra de linha invisível
+// no fim — o Google recusa ("OAuth client was not found"). Limpa antes de usar.
+const env = k => (process.env[k] || "").trim();
+
+const REFRESH  = env("GOOGLE_REFRESH_TOKEN");
+const CLIENT   = env("GOOGLE_CLIENT_ID");
+const SECRET   = env("GOOGLE_CLIENT_SECRET");
+const DEV_TOK  = env("GOOGLE_DEVELOPER_TOKEN");
 const CUSTOMER = (process.env.GOOGLE_CUSTOMER_ID || "2241532672").replace(/-/g, "");
 // MCC pela qual o usuário do token enxerga a conta. "none" = acesso direto, sem MCC.
 // Geoplas: a conta NÃO está vinculada à MCC 914-731-2925 — o usuário do token
@@ -108,6 +112,13 @@ async function main() {
   if (!REFRESH || !CLIENT || !SECRET || !DEV_TOK) {
     throw new Error("defina os secrets GOOGLE_REFRESH_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_DEVELOPER_TOKEN");
   }
+  // confere o FORMATO de cada secret (sem imprimir o valor) — pega secret trocado de campo
+  const forma = [
+    ["GOOGLE_CLIENT_ID", CLIENT.endsWith(".apps.googleusercontent.com"), "deveria terminar em .apps.googleusercontent.com"],
+    ["GOOGLE_CLIENT_SECRET", !SECRET.includes(".apps.googleusercontent.com"), "parece ser o Client ID, não a chave secreta"],
+    ["GOOGLE_REFRESH_TOKEN", REFRESH.startsWith("1//"), "deveria começar com 1//"],
+  ].filter(([, ok]) => !ok);
+  if (forma.length) throw new Error("secret com formato estranho: " + forma.map(([k, , why]) => `${k} (${why})`).join("; "));
   TOKEN = await getAccessToken();
   const until = new Date().toISOString().slice(0, 10);
   const RANGE = `segments.date BETWEEN '${SINCE}' AND '${until}'`;
