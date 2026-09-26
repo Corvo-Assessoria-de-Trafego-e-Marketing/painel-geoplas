@@ -104,6 +104,10 @@ const norm  = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, 
   .replace(/[\u2010-\u2015\u2212]/g, "-")                                        // travessões viram hífen
   .replace(/\s+/g, " ").replace(/\s*([\[\]\-])\s*/g, "$1").toUpperCase().trim(); // espaço em volta de [ ] - não conta
 const met   = m => ({ s: money(m?.costMicros), i: int(m?.impressions), ck: int(m?.clicks), cv: dec(m?.conversions), vl: dec(m?.conversionsValue) });
+/* termo de pesquisa só entra se teve clique, custo ou conversão. Termos que só
+   apareceram na tela eram ~90% das linhas (3,6 MB no PMax da Geoplas) sem
+   nenhum gasto — não servem para negativar e deixavam o painel lento. */
+const TERMO_UTIL = r => r.ck || r.cv || r.s;
 /* grava só o que não é zero — deixa o JSON enxuto */
 const lean  = o => { for (const k of Object.keys(o)) if (o[k] === 0 || o[k] == null) delete o[k]; return o; };
 
@@ -214,7 +218,7 @@ async function main() {
       .map(r => lean({ d: r.segments.date, c: String(r.campaign.id), t: r.searchTermView.searchTerm,
         kw: r.segments.keyword?.info?.text, st: r.searchTermView.status === "NONE" ? null : r.searchTermView.status,
         ...met(r.metrics) }))
-      .filter(r => r.i || r.s));
+      .filter(TERMO_UTIL));
   }
 
   // 5) PMax — grupos de recursos e termos de pesquisa
@@ -250,7 +254,7 @@ async function main() {
       pmax_terms_daily = false;
       pt = await optional("termos de pesquisa (PMax)", async () => (await gaql(Q(false))).map(mapT));
     }
-    search_terms = search_terms.concat(pt.filter(r => r.i || r.s));
+    search_terms = search_terms.concat(pt.filter(TERMO_UTIL));
   }
 
   const dates = daily.map(r => r.d);

@@ -1147,7 +1147,7 @@ function gTermsHTML(G){
     : x.st === "ADDED" ? `<span class="sg none">já é palavra-chave</span>`
     : x.cv > 0 ? `<span class="sg best">converteu</span>` : `<span class="sg none">—</span>`;
   const head = `<div class="tblhead"><h3>Termos de pesquisa${hlp("termo")}</h3>
-    <span class="sub">o que as pessoas realmente buscaram · ${all.length} termos · ordenados por investimento${state.gkw ? ` · só os acionados por <b>${esc(state.gkw)}</b>` : ""}</span></div>`;
+    <span class="sub">o que as pessoas realmente buscaram · ${all.length} termos com clique ou gasto · ordenados por investimento${state.gkw ? ` · só os acionados por <b>${esc(state.gkw)}</b>` : ""}</span></div>`;
   if (!all.length) return `<div class="tblwrap">${head}<div class="empty">${state.gkw
     ? "Nenhum termo registrado para esta palavra-chave no período." : "Nenhum termo de pesquisa neste recorte."}</div></div>`;
   const note = [
