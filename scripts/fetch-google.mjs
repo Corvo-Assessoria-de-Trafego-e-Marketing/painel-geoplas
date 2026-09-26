@@ -97,7 +97,9 @@ async function optional(nome, fn, vazio = []) {
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
-const money = micros => +(Number(micros || 0) / 1e6).toFixed(2);
+// 4 casas: arredondar cada dia a centavos e depois somar desviava ~R$0,03 em
+// 30 dias do total do gerenciador (que soma os micros antes de arredondar)
+const money = micros => +(Number(micros || 0) / 1e6).toFixed(4);
 const int   = v => Number(v || 0);
 const dec   = v => +Number(v || 0).toFixed(2);   // conversões podem ser fracionadas (atribuição por dados)
 const norm  = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // sem acento
