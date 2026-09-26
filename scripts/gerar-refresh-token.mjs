@@ -23,7 +23,9 @@ const CAMPANHAS_ESPERADAS = [
 
 const rl = createInterface({ input: stdin, output: stdout });
 const ask = async (q, def = "") => ((await rl.question(def ? `${q} [${def}]: ` : `${q}: `)).trim() || def);
-const norm = s => String(s || "").toUpperCase().replace(/\s+/g, " ").trim();
+const norm = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // sem acento
+  .replace(/[\u2010-\u2015\u2212]/g, "-")                                        // travessões viram hífen
+  .replace(/\s+/g, " ").replace(/\s*([\[\]\-])\s*/g, "$1").toUpperCase().trim(); // espaço em volta de [ ] - não conta
 
 console.log("\n=== Gerar refresh token do Google Ads ===\n");
 const CLIENT_ID     = await ask("Client ID (termina em .apps.googleusercontent.com)");

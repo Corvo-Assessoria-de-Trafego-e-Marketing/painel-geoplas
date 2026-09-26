@@ -96,7 +96,9 @@ async function optional(nome, fn, vazio = []) {
 const money = micros => +(Number(micros || 0) / 1e6).toFixed(2);
 const int   = v => Number(v || 0);
 const dec   = v => +Number(v || 0).toFixed(2);   // conversões podem ser fracionadas (atribuição por dados)
-const norm  = s => String(s || "").toUpperCase().replace(/\s+/g, " ").trim();
+const norm  = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // sem acento
+  .replace(/[\u2010-\u2015\u2212]/g, "-")                                        // travessões viram hífen
+  .replace(/\s+/g, " ").replace(/\s*([\[\]\-])\s*/g, "$1").toUpperCase().trim(); // espaço em volta de [ ] - não conta
 const met   = m => ({ s: money(m?.costMicros), i: int(m?.impressions), ck: int(m?.clicks), cv: dec(m?.conversions), vl: dec(m?.conversionsValue) });
 /* grava só o que não é zero — deixa o JSON enxuto */
 const lean  = o => { for (const k of Object.keys(o)) if (o[k] === 0 || o[k] == null) delete o[k]; return o; };
