@@ -37,15 +37,30 @@ const OUT  = join(ROOT, "data-google.json");
    vínculo é pelo ID da campanha — o nome pode mudar à vontade no Google.
    `match` (nome) é só referência legível, usado apenas quando `id` é null
    (maiúsculas, acentos, travessões e espaços extras são ignorados).       */
+// Desde 23/10/2026: uma campanha de Pesquisa por produto, todas otimizando só para
+// formulário de orçamento (meta "Leads | Formulários"). Até 22/10 a G1 também
+// tinha um grupo de ACM, e a PMax (G5) rodava junto.
 const PLAN = [
-  { match: "00 - [PRINCIPAIS PRODUTOS] [ACRILICO E ACM]", id: "24279335437",
+  { match: "00 - [ACRILICO] [SEARCH]", id: "24279335437",
     key: "G1", tag: "G1",
-    label: "Pesquisa · Acrílico e ACM",
-    goal: "Capturar quem já está buscando acrílico e ACM no Google e transformar a busca em contato." },
-  { match: "[C2] - [PMAX] - [GEO]", id: "23296324040",
+    label: "Pesquisa · Acrílico",
+    goal: "Capturar quem busca chapa de acrílico no Google e transformar a busca em pedido de orçamento. Até 22/10 também cobria ACM." },
+  { match: "01 - [ACM] [SEARCH]", id: "24388105814",
     key: "G2", tag: "G2",
+    label: "Pesquisa · ACM",
+    goal: "Capturar quem busca chapa e placa de ACM (alumínio composto) e transformar a busca em pedido de orçamento." },
+  { match: "02 - [POLICARBONATO] [SEARCH]", id: "24394015102",
+    key: "G3", tag: "G3",
+    label: "Pesquisa · Policarbonato",
+    goal: "Capturar quem busca policarbonato alveolar e compacto e transformar a busca em pedido de orçamento." },
+  { match: "03 - [MARCA + CONCORRENTES] [SEARCH]", id: "24388065104",
+    key: "G4", tag: "G4",
+    label: "Pesquisa · Marca e Concorrentes",
+    goal: "Aparecer para quem busca o nome da Geoplas e para quem busca os distribuidores concorrentes." },
+  { match: "[C2] - [PMAX] - [GEO]", id: "23296324040",
+    key: "G5", tag: "G5",
     label: "Performance Max · Geoplas",
-    goal: "Buscar conversões em todas as redes do Google — Pesquisa, YouTube, Display, Gmail e Maps — com a mesma verba." },
+    goal: "Campanha pausada em 20/10/2026. Buscava conversões em todas as redes do Google, mas 86% da verba ia para a Pesquisa." },
 ];
 
 /* ── API ─────────────────────────────────────────────────────────────── */
